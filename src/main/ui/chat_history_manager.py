@@ -1,181 +1,194 @@
 import os
+import shutil
 from pathlib import Path
 
-from PySide6.QtCore import Qt  # <-- Import Qt for flags
-# We need QIcon from QtGui and QStyle from QtWidgets
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QInputDialog, QMessageBox, QStyle
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QStyle, QApplication, QMessageBox
 
-# A custom data role to store the file path in a tree item
-PathRole = 10  # Qt::UserRole starts at 10
+# This custom data role is the key. We'll store the full file path
+# in each tree item under this role.
+PathRole = Qt.ItemDataRole.UserRole + 1
+
 
 class ChatHistoryManager:
-    """
-    Manages loading, creating, and organizing chat projects and files
-    in the chat history tree.
-    """
     def __init__(self, history_root: Path):
         self.history_root = history_root
+        # Ensure the root directory exists
         self.history_root.mkdir(parents=True, exist_ok=True)
-        print(f"Chat history root initialized at: {self.history_root.resolve()}")
 
-    def _load_recursive(self, parent_item, parent_path):
-        """Helper function to recursively load history."""
+    def _get_icons(self):
+        """Helper to get standard system icons."""
+        style = QApplication.style()
+        return {
+            "folder": style.standardIcon(QStyle.StandardPixmap.SP_DirIcon),
+            "file": style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        }
+
+    def _load_recursive(self, parent_dir: Path, parent_item: QTreeWidgetItem, icons: dict):
+        """Recursively load the contents of a project directory."""
         try:
-            # Get the standard icons from the application's style
-            style = parent_item.treeWidget().style()
-            folder_icon = style.standardIcon(QStyle.StandardPixmap.SP_DirIcon)
-            file_icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+            for name in sorted(os.listdir(parent_dir)):
+                name = str(name)  # Ensure name is a string
+                path = parent_dir / name
 
-            for name_bytes in sorted(os.listdir(parent_path)):
-                name = str(name_bytes)
-                path = parent_path / name
+                # Set item flags to be enabled, selectable, and not checkable
+                item_flags = (Qt.ItemFlag.ItemIsEnabled |
+                              Qt.ItemFlag.ItemIsSelectable)
 
                 if path.is_dir():
-                    # This is a project or subproject
                     project_item = QTreeWidgetItem(parent_item, [name])
-                    project_item.setIcon(0, folder_icon)
+                    project_item.setIcon(0, icons["folder"])
                     project_item.setData(0, PathRole, str(path))
-
-                    # --- FIX 3: Force-hide checkbox via data role ---
-                    project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)
-                    # --- End Fix ---
-
-                    # Recurse
-                    self._load_recursive(project_item, path)
-                elif path.is_file() and path.suffix == '.json' and not name.startswith("Chat "):
-                    # This is a named chat file
-                    chat_item = QTreeWidgetItem(parent_item, [name.replace('.json', '')])
-                    chat_item.setIcon(0, file_icon)
+                    project_item.setFlags(item_flags)
+                    project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+                    self._load_recursive(path, project_item, icons)
+                elif path.is_file() and name.endswith(".json"):
+                    display_name = name.replace('.json', '')
+                    chat_item = QTreeWidgetItem(parent_item, [display_name])
+                    chat_item.setIcon(0, icons["file"])
                     chat_item.setData(0, PathRole, str(path))
-
-                    # --- FIX 3: Force-hide checkbox via data role ---
-                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)
-                    # --- End Fix ---
-
+                    chat_item.setFlags(item_flags)
+                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
         except OSError as e:
-            print(f"Error scanning directory {parent_path}: {e}")
+            print(f"Error reading directory {parent_dir}: {e}")
 
     def load_history(self, tree_widget: QTreeWidget):
-        """
-        Scans the history_root directory and populates the QTreeWidget.
-        Folders are projects, .json files are chats.
-        """
+        """Clears and reloads the entire chat history into the QTreeWidget."""
         tree_widget.clear()
+        icons = self._get_icons()
 
-        # Get the file icon for temporary chats
-        style = tree_widget.style()
-        file_icon = style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-
-        # Load temporary "Chat N" files at the root
         try:
-            for name_bytes in sorted(os.listdir(self.history_root)):
-                name = str(name_bytes)
+            for name in sorted(os.listdir(self.history_root)):
+                name = str(name)  # Ensure name is a string
                 path = self.history_root / name
+
+                # Set item flags to be enabled, selectable, and not checkable
+                item_flags = (Qt.ItemFlag.ItemIsEnabled |
+                              Qt.ItemFlag.ItemIsSelectable)
+
                 if path.is_file() and path.suffix == '.json' and name.startswith("Chat "):
                     chat_item = QTreeWidgetItem(tree_widget, [name.replace('.json', '')])
-                    chat_item.setIcon(0, file_icon)
+                    chat_item.setIcon(0, icons["file"])
                     chat_item.setData(0, PathRole, str(path))
-
-                    # --- FIX 3: Force-hide checkbox via data role ---
-                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)
-                    # --- End Fix ---
-
+                    chat_item.setFlags(item_flags)
+                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+                elif path.is_dir():
+                    project_item = QTreeWidgetItem(tree_widget, [name])
+                    project_item.setIcon(0, icons["folder"])
+                    project_item.setData(0, PathRole, str(path))
+                    project_item.setFlags(item_flags | Qt.ItemFlag.ItemIsDropEnabled) # Make it a parent
+                    project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+                    self._load_recursive(path, project_item, icons)
         except OSError as e:
-            print(f"Error scanning root directory {self.history_root}: {e}")
-
-        # Load all projects and their sub-items
-        self._load_recursive(tree_widget.invisibleRootItem(), self.history_root)
-
-        tree_widget.expandAll()
+            print(f"Error reading history root {self.history_root}: {e}")
         print("Chat history loaded into tree.")
 
-    def _get_parent_path(self, parent_item: QTreeWidgetItem) -> Path:
-        """Determines the correct file path for a new item based on its parent."""
-        if parent_item:
-            # This is a subproject or a chat in a project
-            return Path(parent_item.data(0, PathRole))
-        else:
-            # This is a top-level item
-            return self.history_root
-
-    def create_project(self, tree_widget: QTreeWidget, parent_item: QTreeWidgetItem = None):
-        """
-        Prompts the user for a new project name and creates a directory
-        under the given parent (or root if parent is None).
-        """
-        parent_path = self._get_parent_path(parent_item)
-
-        project_name, ok = QInputDialog.getText(tree_widget.window(),
-                                                "New Project", "Enter project name:")
-
-        if ok and project_name:
-            try:
-                new_project_path = parent_path / project_name
-                new_project_path.mkdir(parents=True, exist_ok=False)
-                print(f"Created new project: {new_project_path}")
-                self.load_history(tree_widget)
-            except FileExistsError:
-                QMessageBox.warning(tree_widget.window(), "Error",
-                                    f"A project named '{project_name}' already exists here.")
-            except OSError as e:
-                QMessageBox.warning(tree_widget.window(), "Error",
-                                    f"Could not create project: {e}")
-
     def create_new_chat(self, tree_widget: QTreeWidget, parent_project_item: QTreeWidgetItem = None):
-        """
-        Creates a new chat file.
-        If parent_project_item is None, creates a 'Chat N.json' in the root.
-        If parent_project_item is provided, prompts for a name and creates a file in that project.
-        """
-        parent_path = self._get_parent_path(parent_project_item)
+        """Creates a new 'Chat N' file in the specified project or root."""
+        parent_dir = self.history_root
+        parent_node = tree_widget
 
         if parent_project_item:
-            # Case 1: Create a named chat inside a specific project
-            project_name = parent_project_item.text(0)
-            chat_name, ok = QInputDialog.getText(tree_widget.window(),
-                                                 "New Chat", f"Enter new chat name for project '{project_name}':")
-        else:
-            # Case 2: Create a temporary "Chat N" in the root
-            chat_name, ok = self._get_next_temp_chat_name()
-            if not ok: # Error message is handled inside the helper
-                QMessageBox.warning(tree_widget.window(), "Error", chat_name)
-                return
+            parent_dir = Path(parent_project_item.data(0, PathRole))
+            parent_node = parent_project_item
 
-        if ok and chat_name:
-            try:
-                chat_file_name = f"{chat_name}.json"
-                new_chat_path = parent_path / chat_file_name
+        # Find the next available "Chat N" number
+        i = 1
+        while True:
+            chat_name = f"Chat {i}"
+            new_chat_path = parent_dir / f"{chat_name}.json"
+            if not new_chat_path.exists():
+                break
+            i += 1
 
-                if new_chat_path.exists():
-                    raise FileExistsError(f"A chat named '{chat_name}' already exists in this location.")
-
-                # Create an empty JSON file
-                with open(new_chat_path, 'w') as f:
-                    f.write("[]") # Start with an empty JSON list for messages
-
-                print(f"Created new chat: {new_chat_path}")
-                self.load_history(tree_widget)
-            except FileExistsError as e:
-                QMessageBox.warning(tree_widget.window(), "Error", str(e))
-            except OSError as e:
-                QMessageBox.warning(tree_widget.window(), "Error",
-                                    f"Could not create chat file: {e}")
-
-    def _get_next_temp_chat_name(self) -> (str, bool):
-        """Finds the next available 'Chat N' name."""
         try:
-            i = 1
-            while True:
-                chat_name = f"Chat {i}"
-                chat_path = self.history_root / f"{chat_name}.json"
-                if not chat_path.exists():
-                    return chat_name, True
-                i += 1
-                if i > 1000: # Safety break
-                    return "Could not find an available chat name.", False
-        except Exception as e:
-            return f"Error finding chat name: {e}", False
+            # Create the empty chat file
+            new_chat_path.touch()
 
+            # Add the new chat to the tree
+            chat_item = QTreeWidgetItem(parent_node, [chat_name])
+            chat_item.setIcon(0, self._get_icons()["file"])
+            chat_item.setData(0, PathRole, str(new_chat_path))
+            item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            chat_item.setFlags(item_flags)
+            chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
 
+            tree_widget.setCurrentItem(chat_item)
+            return chat_item
+        except OSError as e:
+            print(f"Error creating new chat file: {e}")
+            return None
 
+    def create_project(self, tree_widget: QTreeWidget, parent_item: QTreeWidgetItem = None):
+        """Creates a new project directory."""
+        parent_dir = self.history_root
+        parent_node = tree_widget
+
+        if parent_item:
+            parent_dir = Path(parent_item.data(0, PathRole))
+            parent_node = parent_item
+
+        # Find the next available "New Project N" name
+        i = 1
+        while True:
+            project_name = f"New Project {i}"
+            new_project_path = parent_dir / project_name
+            if not new_project_path.exists():
+                break
+            i += 1
+
+        try:
+            new_project_path.mkdir()
+            project_item = QTreeWidgetItem(parent_node, [project_name])
+            project_item.setIcon(0, self._get_icons()["folder"])
+            project_item.setData(0, PathRole, str(new_project_path))
+            item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDropEnabled)
+            project_item.setFlags(item_flags)
+            project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+
+            tree_widget.setCurrentItem(project_item)
+            return project_item
+        except OSError as e:
+            print(f"Error creating new project: {e}")
+            return None
+
+    def rename_item(self, old_path: Path, new_name: str, parent_widget) -> bool:
+        """Renames a file or directory."""
+        try:
+            if old_path.is_file():
+                new_path = old_path.with_stem(new_name)
+            else:
+                new_path = old_path.with_name(new_name)
+
+            if new_path.exists():
+                QMessageBox.warning(parent_widget, "Rename Error", "An item with this name already exists.")
+                return False
+
+            old_path.rename(new_path)
+            return True
+        except OSError as e:
+            QMessageBox.warning(parent_widget, "Rename Error", f"Could not rename: {e}")
+            return False
+
+    def delete_item(self, path: Path, warning_callback) -> bool:
+        """Deletes a file or directory. Uses callback for non-empty dir warning."""
+        try:
+            if path.is_file():
+                path.unlink()
+                return True
+            elif path.is_dir():
+                if not any(path.iterdir()):
+                    # Directory is empty, just delete it
+                    path.rmdir()
+                    return True
+                else:
+                    # Directory is not empty, show warning
+                    if warning_callback(path):
+                        shutil.rmtree(path)
+                        return True
+                    else:
+                        return False # User cancelled
+        except OSError as e:
+            print(f"Error deleting {path}: {e}")
+            return False
 
