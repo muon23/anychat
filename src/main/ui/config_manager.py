@@ -35,6 +35,7 @@ class ConfigManager:
         """Sets in-memory defaults if config file is missing or corrupt."""
         self.config['General'] = {
             'keys_file': 'deployment/dev/api_keys.json',
+            'chat_history_root': '.',
             'providers': 'OpenAI, Anthropic, Google AI',
             'models': 'gpt-4o, claude-3-opus'
         }
@@ -53,6 +54,10 @@ class ConfigManager:
 
     def get_keys_file_path(self) -> str:
         return self.config.get('General', 'keys_file', fallback='deployment/dev/api_keys.json')
+
+    def get_chat_history_root(self) -> str:
+        """Gets the root directory for storing chat histories."""
+        return self.config.get('General', 'chat_history_root', fallback='.')
 
     def _get_list_from_config(self, section, key) -> list[str]:
         """Helper to get a comma-separated list from the config."""

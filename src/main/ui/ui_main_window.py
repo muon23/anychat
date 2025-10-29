@@ -25,66 +25,67 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(1069, 688)
+        MainWindow.resize(1134, 746)
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
-        self.verticalLayout_3 = QVBoxLayout(self.centralwidget)
-        self.verticalLayout_3.setObjectName(u"verticalLayout_3")
+        self.verticalLayout_4 = QVBoxLayout(self.centralwidget)
+        self.verticalLayout_4.setObjectName(u"verticalLayout_4")
         self.mainSplitter = QSplitter(self.centralwidget)
         self.mainSplitter.setObjectName(u"mainSplitter")
         self.mainSplitter.setOrientation(Qt.Orientation.Horizontal)
-        self.leftPanelWidget = QWidget(self.mainSplitter)
-        self.leftPanelWidget.setObjectName(u"leftPanelWidget")
-        self.leftPanelWidget.setBaseSize(QSize(200, 0))
-        self.verticalLayout = QVBoxLayout(self.leftPanelWidget)
-        self.verticalLayout.setObjectName(u"verticalLayout")
-        self.newChatButton = QPushButton(self.leftPanelWidget)
-        self.newChatButton.setObjectName(u"newChatButton")
-
-        self.verticalLayout.addWidget(self.newChatButton)
-
-        self.searchBar = QLineEdit(self.leftPanelWidget)
-        self.searchBar.setObjectName(u"searchBar")
-
-        self.verticalLayout.addWidget(self.searchBar)
-
-        self.keysButton = QPushButton(self.leftPanelWidget)
+        self.leftNavContainer = QWidget(self.mainSplitter)
+        self.leftNavContainer.setObjectName(u"leftNavContainer")
+        self.verticalLayout_2 = QVBoxLayout(self.leftNavContainer)
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.keysButton = QPushButton(self.leftNavContainer)
         self.keysButton.setObjectName(u"keysButton")
 
-        self.verticalLayout.addWidget(self.keysButton)
+        self.verticalLayout_2.addWidget(self.keysButton)
 
-        self.line = QFrame(self.leftPanelWidget)
+        self.searchBar = QLineEdit(self.leftNavContainer)
+        self.searchBar.setObjectName(u"searchBar")
+
+        self.verticalLayout_2.addWidget(self.searchBar)
+
+        self.newButtonsLayout = QHBoxLayout()
+        self.newButtonsLayout.setObjectName(u"newButtonsLayout")
+        self.newChatButton = QPushButton(self.leftNavContainer)
+        self.newChatButton.setObjectName(u"newChatButton")
+
+        self.newButtonsLayout.addWidget(self.newChatButton)
+
+        self.newProjectButton = QPushButton(self.leftNavContainer)
+        self.newProjectButton.setObjectName(u"newProjectButton")
+
+        self.newButtonsLayout.addWidget(self.newProjectButton)
+
+
+        self.verticalLayout_2.addLayout(self.newButtonsLayout)
+
+        self.line = QFrame(self.leftNavContainer)
         self.line.setObjectName(u"line")
         self.line.setFrameShape(QFrame.Shape.HLine)
         self.line.setFrameShadow(QFrame.Shadow.Sunken)
 
-        self.verticalLayout.addWidget(self.line)
+        self.verticalLayout_2.addWidget(self.line)
 
-        self.chatHistoryTree = QTreeWidget(self.leftPanelWidget)
-        __qtreewidgetitem = QTreeWidgetItem()
-        __qtreewidgetitem.setText(0, u"1");
-        self.chatHistoryTree.setHeaderItem(__qtreewidgetitem)
+        self.chatHistoryTree = QTreeWidget(self.leftNavContainer)
         self.chatHistoryTree.setObjectName(u"chatHistoryTree")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(1)
         sizePolicy.setHeightForWidth(self.chatHistoryTree.sizePolicy().hasHeightForWidth())
         self.chatHistoryTree.setSizePolicy(sizePolicy)
+        self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
-        self.verticalLayout.addWidget(self.chatHistoryTree)
+        self.verticalLayout_2.addWidget(self.chatHistoryTree)
 
-        self.settingsButton = QPushButton(self.leftPanelWidget)
-        self.settingsButton.setObjectName(u"settingsButton")
-
-        self.verticalLayout.addWidget(self.settingsButton)
-
-        self.mainSplitter.addWidget(self.leftPanelWidget)
-        self.rightPanelWidget = QWidget(self.mainSplitter)
-        self.rightPanelWidget.setObjectName(u"rightPanelWidget")
-        self.rightPanelWidget.setBaseSize(QSize(600, 0))
-        self.verticalLayout_2 = QVBoxLayout(self.rightPanelWidget)
-        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
-        self.chatAreaSplitter = QSplitter(self.rightPanelWidget)
+        self.mainSplitter.addWidget(self.leftNavContainer)
+        self.chatAreaContainer = QWidget(self.mainSplitter)
+        self.chatAreaContainer.setObjectName(u"chatAreaContainer")
+        self.verticalLayout = QVBoxLayout(self.chatAreaContainer)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.chatAreaSplitter = QSplitter(self.chatAreaContainer)
         self.chatAreaSplitter.setObjectName(u"chatAreaSplitter")
         self.chatAreaSplitter.setOrientation(Qt.Orientation.Vertical)
         self.chatDisplay = QTextEdit(self.chatAreaSplitter)
@@ -99,6 +100,7 @@ class Ui_MainWindow(object):
         self.messageInput.setObjectName(u"messageInput")
         sizePolicy.setHeightForWidth(self.messageInput.sizePolicy().hasHeightForWidth())
         self.messageInput.setSizePolicy(sizePolicy)
+        self.messageInput.setMaximumSize(QSize(16777215, 16777215))
 
         self.inputContainerLayout.addWidget(self.messageInput)
 
@@ -124,16 +126,16 @@ class Ui_MainWindow(object):
 
         self.chatAreaSplitter.addWidget(self.inputContainer)
 
-        self.verticalLayout_2.addWidget(self.chatAreaSplitter)
+        self.verticalLayout.addWidget(self.chatAreaSplitter)
 
-        self.mainSplitter.addWidget(self.rightPanelWidget)
+        self.mainSplitter.addWidget(self.chatAreaContainer)
 
-        self.verticalLayout_3.addWidget(self.mainSplitter)
+        self.verticalLayout_4.addWidget(self.mainSplitter)
 
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 1069, 37))
+        self.menubar.setGeometry(QRect(0, 0, 1134, 37))
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QStatusBar(MainWindow)
         self.statusbar.setObjectName(u"statusbar")
@@ -146,10 +148,12 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"AnyChat", None))
-        self.newChatButton.setText(QCoreApplication.translate("MainWindow", u"New Chat", None))
-        self.searchBar.setPlaceholderText(QCoreApplication.translate("MainWindow", u"Search chats...", None))
         self.keysButton.setText(QCoreApplication.translate("MainWindow", u"Keys", None))
-        self.settingsButton.setText(QCoreApplication.translate("MainWindow", u"Settings", None))
+        self.searchBar.setPlaceholderText(QCoreApplication.translate("MainWindow", u"Search chats...", None))
+        self.newChatButton.setText(QCoreApplication.translate("MainWindow", u"New Chat", None))
+        self.newProjectButton.setText(QCoreApplication.translate("MainWindow", u"New Project", None))
+        ___qtreewidgetitem = self.chatHistoryTree.headerItem()
+        ___qtreewidgetitem.setText(0, QCoreApplication.translate("MainWindow", u"Projects", None));
         self.messageInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"Ask anything...", None))
         self.sendButton.setText(QCoreApplication.translate("MainWindow", u"Send", None))
     # retranslateUi

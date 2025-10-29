@@ -6,32 +6,26 @@
             <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>1069</width>
-                <height>688</height>
+                <width>1134</width>
+                <height>746</height>
             </rect>
         </property>
         <property name="windowTitle">
             <string>AnyChat</string>
         </property>
         <widget class="QWidget" name="centralwidget">
-            <layout class="QVBoxLayout" name="verticalLayout_3">
+            <layout class="QVBoxLayout" name="verticalLayout_4">
                 <item>
                     <widget class="QSplitter" name="mainSplitter">
                         <property name="orientation">
                             <enum>Qt::Orientation::Horizontal</enum>
                         </property>
-                        <widget class="QWidget" name="leftPanelWidget" native="true">
-                            <property name="baseSize">
-                                <size>
-                                    <width>200</width>
-                                    <height>0</height>
-                                </size>
-                            </property>
-                            <layout class="QVBoxLayout" name="verticalLayout">
+                        <widget class="QWidget" name="leftNavContainer" native="true">
+                            <layout class="QVBoxLayout" name="verticalLayout_2">
                                 <item>
-                                    <widget class="QPushButton" name="newChatButton">
+                                    <widget class="QPushButton" name="keysButton">
                                         <property name="text">
-                                            <string>New Chat</string>
+                                            <string>Keys</string>
                                         </property>
                                     </widget>
                                 </item>
@@ -43,11 +37,22 @@
                                     </widget>
                                 </item>
                                 <item>
-                                    <widget class="QPushButton" name="keysButton">
-                                        <property name="text">
-                                            <string>Keys</string>
-                                        </property>
-                                    </widget>
+                                    <layout class="QHBoxLayout" name="newButtonsLayout">
+                                        <item>
+                                            <widget class="QPushButton" name="newChatButton">
+                                                <property name="text">
+                                                    <string>New Chat</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QPushButton" name="newProjectButton">
+                                                <property name="text">
+                                                    <string>New Project</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                    </layout>
                                 </item>
                                 <item>
                                     <widget class="Line" name="line">
@@ -64,30 +69,21 @@
                                                 <verstretch>1</verstretch>
                                             </sizepolicy>
                                         </property>
+                                        <!-- This is the critical change -->
+                                        <property name="contextMenuPolicy">
+                                            <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
+                                        </property>
                                         <column>
                                             <property name="text">
-                                                <string notr="true">1</string>
+                                                <string>Projects</string>
                                             </property>
                                         </column>
                                     </widget>
                                 </item>
-                                <item>
-                                    <widget class="QPushButton" name="settingsButton">
-                                        <property name="text">
-                                            <string>Settings</string>
-                                        </property>
-                                    </widget>
-                                </item>
                             </layout>
                         </widget>
-                        <widget class="QWidget" name="rightPanelWidget" native="true">
-                            <property name="baseSize">
-                                <size>
-                                    <width>600</width>
-                                    <height>0</height>
-                                </size>
-                            </property>
-                            <layout class="QVBoxLayout" name="verticalLayout_2">
+                        <widget class="QWidget" name="chatAreaContainer" native="true">
+                            <layout class="QVBoxLayout" name="verticalLayout">
                                 <item>
                                     <widget class="QSplitter" name="chatAreaSplitter">
                                         <property name="orientation">
@@ -101,10 +97,6 @@
                                         <widget class="QWidget" name="inputContainer" native="true">
                                             <layout class="QVBoxLayout" name="inputContainerLayout">
                                                 <item>
-                                                    <!--
-                                                      Item 1: Message input text edit.
-                                                      It now has a vertical stretch of 1 to expand.
-                                                    -->
                                                     <widget class="QTextEdit" name="messageInput">
                                                         <property name="sizePolicy">
                                                             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -112,21 +104,20 @@
                                                                 <verstretch>1</verstretch>
                                                             </sizepolicy>
                                                         </property>
+                                                        <property name="maximumSize">
+                                                            <size>
+                                                                <width>16777215</width>
+                                                                <height>16777215</height>
+                                                            </size>
+                                                        </property>
                                                         <property name="placeholderText">
                                                             <string>Ask anything...</string>
                                                         </property>
                                                     </widget>
                                                 </item>
                                                 <item>
-                                                    <!--
-                                                      Item 2: New horizontal layout for controls
-                                                    -->
                                                     <layout class="QHBoxLayout" name="bottomControlsLayout">
                                                         <item>
-                                                            <!--
-                                                              Model ComboBox is now inside the new layout.
-                                                              It has a horizontal stretch of 1 to expand.
-                                                            -->
                                                             <widget class="QComboBox" name="modelComboBox">
                                                                 <property name="sizePolicy">
                                                                     <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -137,9 +128,6 @@
                                                             </widget>
                                                         </item>
                                                         <item>
-                                                            <!--
-                                                              Send Button is now inside the new layout
-                                                            -->
                                                             <widget class="QPushButton" name="sendButton">
                                                                 <property name="text">
                                                                     <string>Send</string>
@@ -163,7 +151,7 @@
                 <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>1069</width>
+                    <width>1134</width>
                     <height>37</height>
                 </rect>
             </property>
