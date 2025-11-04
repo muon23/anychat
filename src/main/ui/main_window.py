@@ -562,9 +562,24 @@ if __name__ == "__main__":
     print(f"Providers: {providers}")
 
     keys_file_path = Path(keys_file_str)
-    key_manager = KeyManager(keys_file_path, providers)
-
     chat_history_path = Path(chat_history_root_str)
+    
+    # Check if keys_file is inside chat_history_root (security check)
+    keys_file_resolved = keys_file_path.resolve()
+    chat_history_resolved = chat_history_path.resolve()
+    
+    try:
+        # Check if keys_file is within chat_history_root
+        keys_file_relative = keys_file_resolved.relative_to(chat_history_resolved)
+        # If we get here without exception, keys_file is inside chat_history_root
+        print(f"ERROR: keys_file ({keys_file_resolved}) is inside chat_history_root ({chat_history_resolved})")
+        print("This is not allowed for security reasons. Please configure keys_file outside of chat_history_root.")
+        sys.exit(1)
+    except ValueError:
+        # ValueError means keys_file is NOT inside chat_history_root, which is good
+        pass
+
+    key_manager = KeyManager(keys_file_path, providers)
     chat_history_path.mkdir(parents=True, exist_ok=True)
     print(f"Chat history root initialized at: {chat_history_path.resolve()}")
     chat_history_manager = ChatHistoryManager(chat_history_path)

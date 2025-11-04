@@ -18,7 +18,7 @@ class LLMService:
             invocation_args = self.config_manager.get_invocation_arguments()
 
             # 2. Get provider and key
-            provider = model_args.get("provider")
+            provider = model_args.pop("provider", None)
             model_key = None
             if provider:
                 key = self.key_manager.get_key(provider)

@@ -26,6 +26,26 @@ class ChatHistoryManager:
             "file": style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
         }
 
+    @staticmethod
+    def _create_folder_item(parent, name: str, path: Path, icons: dict, item_flags) -> QTreeWidgetItem:
+        """Creates a folder tree item with standard configuration."""
+        folder_item = QTreeWidgetItem(parent, [name])
+        folder_item.setIcon(0, icons["folder"])
+        folder_item.setData(0, PathRole, str(path))
+        folder_item.setFlags(item_flags | Qt.ItemFlag.ItemIsDropEnabled)
+        folder_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
+        return folder_item
+
+    @staticmethod
+    def _create_file_item(parent, display_name: str, path: Path, icons: dict, item_flags) -> QTreeWidgetItem:
+        """Creates a file tree item with standard configuration."""
+        file_item = QTreeWidgetItem(parent, [display_name])
+        file_item.setIcon(0, icons["file"])
+        file_item.setData(0, PathRole, str(path))
+        file_item.setFlags(item_flags)
+        file_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
+        return file_item
+
     def _load_recursive(self, parent_dir: Path, parent_item: QTreeWidgetItem, icons: dict):
         """Recursively load the contents of a project directory."""
         try:
@@ -38,21 +58,11 @@ class ChatHistoryManager:
                               Qt.ItemFlag.ItemIsSelectable)
 
                 if path.is_dir():
-                    project_item = QTreeWidgetItem(parent_item, [name])
-                    project_item.setIcon(0, icons["folder"])
-                    project_item.setData(0, PathRole, str(path))
-                    # Allow items to be parents
-                    item_flags |= Qt.ItemFlag.ItemIsDropEnabled
-                    project_item.setFlags(item_flags)
-                    project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+                    project_item = self._create_folder_item(parent_item, name, path, icons, item_flags)
                     self._load_recursive(path, project_item, icons)
                 elif path.is_file() and name.endswith(".json"):
                     display_name = name.replace('.json', '')
-                    chat_item = QTreeWidgetItem(parent_item, [display_name])
-                    chat_item.setIcon(0, icons["file"])
-                    chat_item.setData(0, PathRole, str(path))
-                    chat_item.setFlags(item_flags)
-                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
+                    self._create_file_item(parent_item, display_name, path, icons, item_flags)
         except OSError as e:
             print(f"Error reading directory {parent_dir}: {e}")
 
@@ -71,19 +81,11 @@ class ChatHistoryManager:
                 item_flags = (Qt.ItemFlag.ItemIsEnabled |
                               Qt.ItemFlag.ItemIsSelectable)
 
-                if path.is_file() and path.suffix == '.json' and name.startswith("Chat "):
-                    chat_item = QTreeWidgetItem(tree_widget, [name.replace('.json', '')])
-                    chat_item.setIcon(0, icons["file"])
-                    chat_item.setData(0, PathRole, str(path))
-                    chat_item.setFlags(item_flags)
-                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
+                if path.is_file() and path.suffix == '.json':
+                    display_name = name.replace('.json', '')
+                    self._create_file_item(tree_widget, display_name, path, icons, item_flags)
                 elif path.is_dir():
-                    project_item = QTreeWidgetItem(tree_widget, [name])
-                    project_item.setIcon(0, icons["folder"])
-                    project_item.setData(0, PathRole, str(path))
-                    item_flags |= Qt.ItemFlag.ItemIsDropEnabled  # Make it a parent
-                    project_item.setFlags(item_flags)
-                    project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
+                    project_item = self._create_folder_item(tree_widget, name, path, icons, item_flags)
                     self._load_recursive(path, project_item, icons)
         except OSError as e:
             print(f"Error reading history root {self.history_root}: {e}")
