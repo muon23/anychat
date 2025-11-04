@@ -1,24 +1,29 @@
-# This module will import your local llms module
-# Adjust the import path as needed for your project structure
-try:
-    # Assuming 'llms' is a package/module in your project's PYTHONPATH
-    import llms
-except ImportError:
-    print("CRITICAL: Could not import the 'llms' module.")
-    # Create a mock for testing if the module isn't found
-    class MockBot:
-        def __init__(self, *args, **kwargs):
-            print(f"MockBot created with args: {args}, kwargs: {kwargs}")
-            self.text = "This is a mock response from a mock bot."
+import sys
+from pathlib import Path
+import traceback
 
+# --- Add parent directory to sys.path ---
+# This assumes llm_service.py is in src/main/ui and llms is in src/main/llms
+try:
+    current_file_path = Path(__file__).resolve()
+    parent_dir = current_file_path.parent
+    main_dir = parent_dir.parent
+
+    if str(main_dir) not in sys.path:
+        sys.path.append(str(main_dir))
+        print(f"Added {main_dir} to sys.path for llms module")
+
+    import llms
+except ImportError as e:
+    print(f"CRITICAL: Error importing local llms module: {e}")
+    # Create a mock llms object if import fails, so the app can still run
+    class MockLLM:
         def invoke(self, *args, **kwargs):
-            print(f"MockBot invoked with args: {args}, kwargs: {kwargs}")
-            return self
+            return type('obj', (object,), {'text': f'Error: llms module not found. {e}'})
 
     class MockLLMs:
         def of(self, *args, **kwargs):
-            return MockBot(*args, **kwargs)
-
+            return MockLLM()
     llms = MockLLMs()
 
 
@@ -26,52 +31,53 @@ class LLMService:
     def __init__(self, config_manager, key_manager):
         self.config_manager = config_manager
         self.key_manager = key_manager
-        print("LLMService initialized.")
 
-    def get_response(self, model_name: str, messages: list):
+    def get_response(self, model_name: str, messages: list) -> str:
         """
-        Gets a response from the LLM, configuring it with arguments
-        from the config file and injecting the correct API key.
+        Gets a response from the specified LLM, handling config and keys.
         """
-
-        # 1. Get ALL model and invocation arguments from config
-        model_args = self.config_manager.get_model_arguments(model_name)
-        invocation_args = self.config_manager.get_invocation_arguments()
-
-        # 2. Find the provider for the selected model
-        #    We use .pop() to get the provider AND remove it from the
-        #    dict so it's not passed to llms.of() as a model argument.
-        provider = model_args.pop('provider', None)
-
-        if provider:
-            # 3. If a provider is listed, get its key from the KeyManager
-            api_key = self.key_manager.get_key(provider)
-
-            if api_key:
-                # 4. If a key exists, add it as 'model_key'
-                model_args['model_key'] = api_key
-                print(f"Found provider '{provider}'. Injecting 'model_key'.")
-            else:
-                print(f"Found provider '{provider}' but no API key is set. Proceeding without 'model_key'.")
-        else:
-            print(f"No provider listed for model '{model_name}'. Proceeding without 'model_key'.")
-
-        # 5. Print the final arguments for debugging
-        print(f"Calling llms.of() with model_args: {model_args}")
-        print(f"Calling bot.invoke() with invocation_args: {invocation_args}")
-
         try:
-            # 6. Create bot instance
-            # We pass model_args (which may or may not have 'model_key')
-            bot = llms.of(model_name, **model_args)
+            print(f"LLMService: Getting response for model: {model_name}")
 
-            # 7. Invoke bot
-            result = bot.invoke(messages, **invocation_args)
+            # --- FIX: Use the correct function names ---
+            model_args = self.config_manager.get_model_arguments(model_name)
+            invocation_args = self.config_manager.get_invocation_arguments()
+            # --- END FIX ---
 
-            # 8. Return the text content
-            return result.text
+            # 2. Get provider and key
+            provider = model_args.get("provider")
+            model_key = None
+            if provider:
+                key = self.key_manager.get_key(provider)
+                if key:
+                    model_key = key
+                    print(f"LLMService: Found key for provider: {provider}")
+
+            # 3. Build final argument dict
+            model_args_with_key = model_args.copy()
+            if model_key:
+                model_args_with_key["model_key"] = model_key
+
+            # 4. Create bot instance
+            print(f"Calling llms.of({model_name}, ...)")
+            bot = llms.of(model_name, **model_args_with_key)
+
+            # 5. Format messages for the 'llms' library
+            formatted_messages = []
+            for msg in messages:
+                formatted_messages.append((msg.get("role"), msg.get("content")))
+
+            # 6. Call the bot
+            print(f"Invoking {model_name} with {len(formatted_messages)} messages and args {invocation_args}")
+            response = bot.invoke(formatted_messages, **invocation_args)
+
+            if not hasattr(response, 'text'):
+                raise ValueError("LLM response object has no 'text' attribute.")
+
+            return response.text
 
         except Exception as e:
-            print(f"Error during LLM invocation: {e}")
+            print(f"Error during LLM call: {e}")
+            traceback.print_exc() # Print full traceback to console
             return f"Error: {e}"
 

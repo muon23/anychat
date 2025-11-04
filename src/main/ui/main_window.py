@@ -44,7 +44,9 @@ class MainWindow(QMainWindow):
         self.newProjectButton = None
 
         # A variable to hold the path of the currently active chat
-        self.current_chat_file_path = None
+        self.current_chat_file_path: Path | None = None
+        # Store current messages to avoid re-reading from widgets
+        self.current_messages: list[dict] = []
 
         self._load_ui()
 
@@ -78,7 +80,6 @@ class MainWindow(QMainWindow):
         self._populate_models()
         self._load_chat_history()
 
-    # --- FIX: Correct type hint for 'event' ---
     def resizeEvent(self, event: QResizeEvent):
         """
         This event is called every time the main window is resized.
@@ -181,11 +182,12 @@ class MainWindow(QMainWindow):
         if self.chatHistoryTree:
             self.chatHistoryTree.customContextMenuRequested.connect(self._show_tree_context_menu)
             print("Tree context menu connected.")
-            # TODO: Connect self.chatHistoryTree.currentItemChanged to load a chat
+
+            self.chatHistoryTree.currentItemChanged.connect(self._on_tree_item_selected)
+            print("Tree item selection connected.")
         else:
             print("Warning: 'chatHistoryTree' not found.")
 
-        # --- FIX: Connect splitter signals to the resize method ---
         main_splitter = self.findChild(QSplitter, "mainSplitter")
         if main_splitter:
             main_splitter.splitterMoved.connect(self._on_chat_display_resize)
@@ -195,7 +197,6 @@ class MainWindow(QMainWindow):
         if chat_splitter:
             chat_splitter.splitterMoved.connect(self._on_chat_display_resize)
             print("Chat splitter connected to resize.")
-        # --- END FIX ---
 
 
     def _populate_models(self):
@@ -213,13 +214,8 @@ class MainWindow(QMainWindow):
     def _load_chat_history(self):
         """Saves expanded state, reloads the tree, and restores expanded state."""
         if self.chatHistoryTree and self.chat_history_manager:
-            # 1. Save the current expansion state
             expanded_paths = self._get_expanded_state()
-
-            # 2. Reload the tree
             self.chat_history_manager.load_history(self.chatHistoryTree)
-
-            # 3. Restore the expansion state
             self._set_expanded_state(expanded_paths)
         else:
             print("Warning: 'chatHistoryTree' or 'chat_history_manager' not found.")
@@ -253,27 +249,128 @@ class MainWindow(QMainWindow):
                 item.setExpanded(True)
             iterator += 1
 
-    def _add_chat_message(self, role: str, content: str):
+    def _add_chat_message(self, role: str, content: str) -> ChatMessageWidget | None:
         """
         Adds a new chat bubble widget to the chatDisplay (QListWidget).
         """
         if not self.chatDisplay:
-            return
+            return None
 
-        # 1. Create the custom chat widget
         chat_widget = ChatMessageWidget()
-
-        # 2. Create the QListWidgetItem
         list_item = QListWidgetItem(self.chatDisplay)
 
-        # 3. Set the message content (this also triggers initial styling and sizing)
+        chat_widget.editingFinished.connect(self._save_current_chat)
+
         chat_widget.set_message(role, content, list_item)
-
-        # 4. Set the custom widget as the item for this row in the list
         self.chatDisplay.setItemWidget(list_item, chat_widget)
-
-        # 5. Ensure the new message is visible
         self.chatDisplay.scrollToBottom()
+
+        # --- THIS IS THE FIX ---
+        # After adding the widget and scrolling,
+        # force a resize of all items *now* that the viewport is stable.
+        self._on_chat_display_resize()
+        # --- END FIX ---
+
+        return chat_widget
+
+    def _clear_chat_display(self):
+        """Clears all messages from the chat display and input."""
+        if self.chatDisplay:
+            self.chatDisplay.clear()
+        if self.messageInput:
+            self.messageInput.clear()
+        # Do NOT clear self.current_messages here
+
+
+    def _on_tree_item_selected(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
+        """
+        Handles loading a chat when an item in the tree is clicked.
+        """
+        if not current:
+            # No item selected
+            self.current_chat_file_path = None
+            self.current_messages = [] # Clear messages
+            self._clear_chat_display()
+            return
+
+        item_path_str = current.data(0, PathRole)
+        if not item_path_str:
+            return
+
+        item_path = Path(item_path_str)
+
+        if item_path.is_dir():
+            # It's a project, not a chat file. Clear display.
+            self.current_chat_file_path = None
+            self.current_messages = [] # Clear messages
+            self._clear_chat_display()
+
+        elif item_path.is_file() and item_path.suffix == '.json':
+            # It's a chat file. Load it.
+            print(f"Loading chat: {item_path}")
+            self._load_chat_from_file(item_path)
+
+    def _load_chat_from_file(self, file_path: Path):
+        """Loads a chat from a file and populates the display."""
+        self.current_chat_file_path = file_path
+
+        # Load messages *before* clearing display
+        self.current_messages = self.chat_history_manager.load_chat(file_path)
+
+        # Now clear the display
+        self._clear_chat_display()
+
+        messages_to_display = self.current_messages
+        last_message_content = ""
+
+        # --- Implement your special loading logic ---
+        if self.current_messages:
+            last_message = self.current_messages[-1]
+            if last_message.get("role") == "user":
+                messages_to_display = self.current_messages[:-1]
+                last_message_content = last_message.get("content", "")
+
+        # --- Populate the chat display ---
+        for message in messages_to_display:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            self._add_chat_message(role, content)
+
+        if self.messageInput:
+            self.messageInput.setPlainText(last_message_content)
+
+        # After loading, update all bubble sizes
+        self._on_chat_display_resize()
+
+    def _save_current_chat(self):
+        """Saves the current state of the chatDisplay to its file."""
+        if not self.current_chat_file_path:
+            print("Save skipped: No active chat file selected.")
+            return
+
+        if not self.chatDisplay:
+            return
+
+        messages_to_save = []
+        for i in range(self.chatDisplay.count()):
+            item = self.chatDisplay.item(i)
+            widget = self.chatDisplay.itemWidget(item)
+            if isinstance(widget, ChatMessageWidget):
+                role, content = widget.get_message_tuple()
+                # Do not save "thinking" messages
+                if role in ("user", "assistant"):
+                    messages_to_save.append({"role": role, "content": content})
+
+        if self.messageInput:
+            last_user_message = self.messageInput.toPlainText().strip()
+            if last_user_message:
+                messages_to_save.append({"role": "user", "content": last_user_message})
+
+        # Save the collected messages to the file
+        self.chat_history_manager.save_chat(self.current_chat_file_path, messages_to_save)
+
+        # Update the internal state
+        self.current_messages = messages_to_save
 
 
     def _show_tree_context_menu(self, position: QPoint):
@@ -282,16 +379,13 @@ class MainWindow(QMainWindow):
         item = self.chatHistoryTree.itemAt(position)
 
         if item:
-            # --- This is a context menu for a specific item ---
             item_path_str = item.data(0, PathRole)
             if not item_path_str:
-                print("Right-click on item with no PathRole data (e.g., header). Aborting menu.")
                 return
 
             item_path = Path(item_path_str)
 
             if item_path.is_dir():
-                # This is a project, so we can add children
                 new_chat_action = context_menu.addAction("New Chat in this Project")
                 new_chat_action.triggered.connect(lambda: self.handle_new_chat_in_project(item))
 
@@ -300,16 +394,13 @@ class MainWindow(QMainWindow):
 
                 context_menu.addSeparator()
 
-            # --- Add Rename Action ---
             rename_action = context_menu.addAction("Rename")
             rename_action.triggered.connect(lambda: self.handle_rename_item(item))
 
-            # --- Add Delete Action ---
             delete_action = context_menu.addAction("Delete")
             delete_action.triggered.connect(lambda: self.handle_delete_item(item))
 
         else:
-            # --- This is a context menu for the empty area ---
             new_root_chat_action = context_menu.addAction("New Chat")
             new_root_chat_action.triggered.connect(self.handle_new_root_chat)
 
@@ -321,24 +412,16 @@ class MainWindow(QMainWindow):
     def show_delete_warning(self, path: Path) -> bool:
         """
         Shows a custom warning dialog for deleting non-empty projects.
-        Returns True if the user clicks "DO IT!", False otherwise.
         """
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("Confirm Deletion")
         msg_box.setText(f"The project '{path.name}' is not empty. "
                         f"This will permanently delete all chats and subprojects inside it.")
         msg_box.setIcon(QMessageBox.Icon.Warning)
-
-        # Add buttons
         do_it_button = msg_box.addButton("DO IT!", QMessageBox.ButtonRole.DestructiveRole)
         cancel_button = msg_box.addButton(QMessageBox.StandardButton.Cancel)
-
-        # Set default button
         msg_box.setDefaultButton(cancel_button)
-
         msg_box.exec()
-
-        # Return True if the user clicks "DO IT!"
         return msg_box.clickedButton() == do_it_button
 
     def open_keys_dialog(self):
@@ -351,25 +434,34 @@ class MainWindow(QMainWindow):
         """Handles the 'New Chat' button click (creates a root 'Chat N')."""
         print("New Chat (root) clicked.")
         if self.chatHistoryTree and self.chat_history_manager:
-            self.chat_history_manager.create_new_chat(self.chatHistoryTree, parent_project_item=None)
+            new_item = self.chat_history_manager.create_new_chat(self.chatHistoryTree, parent_project_item=None)
+            if new_item:
+                self.chatHistoryTree.setCurrentItem(new_item)
 
     def handle_new_root_project(self):
         """Handles the 'New Project' button click (creates a top-level project)."""
         print("New Project (root) clicked.")
         if self.chatHistoryTree and self.chat_history_manager:
-            self.chat_history_manager.create_project(self.chatHistoryTree, parent_item=None)
+            new_item = self.chat_history_manager.create_project(self.chatHistoryTree, parent_item=None)
+            if new_item:
+                self.chatHistoryTree.setCurrentItem(new_item)
 
     def handle_new_chat_in_project(self, project_item):
         """Creates a named chat inside the selected project."""
         print(f"New Chat in '{project_item.text(0)}' clicked.")
         if self.chatHistoryTree and self.chat_history_manager:
-            self.chat_history_manager.create_new_chat(self.chatHistoryTree, parent_project_item=project_item)
+            new_item = self.chat_history_manager.create_new_chat(self.chatHistoryTree, parent_project_item=project_item)
+            if new_item:
+                self.chatHistoryTree.setCurrentItem(new_item)
 
     def handle_new_subproject(self, project_item: QTreeWidgetItem):
         """Creates a subproject inside the selected project."""
         print(f"New Subproject in '{project_item.text(0)}' clicked.")
         if self.chatHistoryTree and self.chat_history_manager:
-            self.chat_history_manager.create_project(self.chatHistoryTree, parent_item=project_item)
+            new_item = self.chat_history_manager.create_project(self.chatHistoryTree, parent_item=project_item)
+            if new_item:
+                self.chatHistoryTree.setCurrentItem(new_item)
+
 
     def handle_rename_item(self, item: QTreeWidgetItem):
         """Handles the 'Rename' context menu action."""
@@ -404,11 +496,14 @@ class MainWindow(QMainWindow):
             print("Error: UI components or services not initialized.")
             return
 
+        if not self.current_chat_file_path:
+            QMessageBox.warning(self, "No Chat Selected", "Please select a chat or create a new one before sending a message.")
+            return
+
         message = self.messageInput.toPlainText().strip()
         model = self.modelComboBox.currentText()
-
         if not message:
-            return  # Don't send empty messages
+            return
 
         print(f"Sending to {model}: {message}")
 
@@ -418,35 +513,44 @@ class MainWindow(QMainWindow):
         # 2. Clear the input
         self.messageInput.clear()
 
-        # 3. Collect the full chat history
-        # TODO: This needs to load from the current_chat_file_path
-        # For now, it just pulls from the widgets
-        messages = []
-        for i in range(self.chatDisplay.count()):
-            item = self.chatDisplay.item(i)
-            widget = self.chatDisplay.itemWidget(item)
-            if isinstance(widget, ChatMessageWidget):
-                messages.append(widget.get_message_tuple()) # (role, content)
+        # 3. Save the chat (which now reads from the widgets)
+        self._save_current_chat()
 
-        # 4. Show a "thinking" bubble (optional, but good UX)
-        # self._add_chat_message("assistant", "...thinking...")
-        # We'll just print for now
-        print("Calling LLM service...")
+        # 4. Show a "thinking" message (but don't save it)
+        #    We pass "thinking" as a role so it's not saved
+        thinking_bubble = self._add_chat_message("thinking", "...")
+        QApplication.processEvents() # Force UI to update
 
-        # 5. Call the LLM service
+        # 5. Call the LLM service with the current message history
         try:
-            response = self.llm_service.get_response(model, messages)
+            # self.current_messages was updated by _save_current_chat()
+            response_content = self.llm_service.get_response(model, list(self.current_messages))
 
-            # 6. Add the AI's response to the display
-            self._add_chat_message("assistant", response)
+            # 6. Update the "thinking" bubble with the real response
+            if thinking_bubble:
+                # Find the QListWidgetItem for the thinking bubble
+                for i in range(self.chatDisplay.count()):
+                    item = self.chatDisplay.item(i)
+                    widget = self.chatDisplay.itemWidget(item)
+                    if widget == thinking_bubble:
+                        widget.set_message("assistant", response_content, item)
+                        break
 
-            # TODO: Save the full chat history (messages + response)
-            # to self.current_chat_file_path
+            # 7. Save the chat *again* with the new AI response
+            self._save_current_chat()
 
         except Exception as e:
             print(f"Error calling LLM: {e}")
-            self._add_chat_message("assistant", f"Error: {e}")
-
+            error_message = f"Error: {e}"
+            if thinking_bubble:
+                for i in range(self.chatDisplay.count()):
+                    item = self.chatDisplay.item(i)
+                    widget = self.chatDisplay.itemWidget(item)
+                    if widget == thinking_bubble:
+                        widget.set_message("assistant", error_message, item)
+                        break
+            # Save the error message to the chat
+            self._save_current_chat()
 
 ### Main execution block
 if __name__ == "__main__":

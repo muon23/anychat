@@ -1,5 +1,6 @@
 import os
 import shutil
+import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -39,6 +40,8 @@ class ChatHistoryManager:
                     project_item = QTreeWidgetItem(parent_item, [name])
                     project_item.setIcon(0, icons["folder"])
                     project_item.setData(0, PathRole, str(path))
+                    # Allow items to be parents
+                    item_flags |= Qt.ItemFlag.ItemIsDropEnabled
                     project_item.setFlags(item_flags)
                     project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
                     self._load_recursive(path, project_item, icons)
@@ -56,6 +59,7 @@ class ChatHistoryManager:
         """Clears and reloads the entire chat history into the QTreeWidget."""
         tree_widget.clear()
         icons = self._get_icons()
+        tree_widget.setHeaderHidden(True) # Hide the "1" header
 
         try:
             for name in sorted(os.listdir(self.history_root)):
@@ -76,7 +80,8 @@ class ChatHistoryManager:
                     project_item = QTreeWidgetItem(tree_widget, [name])
                     project_item.setIcon(0, icons["folder"])
                     project_item.setData(0, PathRole, str(path))
-                    project_item.setFlags(item_flags | Qt.ItemFlag.ItemIsDropEnabled) # Make it a parent
+                    item_flags |= Qt.ItemFlag.ItemIsDropEnabled # Make it a parent
+                    project_item.setFlags(item_flags)
                     project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
                     self._load_recursive(path, project_item, icons)
         except OSError as e:
@@ -102,8 +107,9 @@ class ChatHistoryManager:
             i += 1
 
         try:
-            # Create the empty chat file
-            new_chat_path.touch()
+            # Create the empty chat file with an empty list
+            with open(new_chat_path, 'w', encoding='utf-8') as f:
+                json.dump([], f)
 
             # Add the new chat to the tree
             chat_item = QTreeWidgetItem(parent_node, [chat_name])
@@ -112,6 +118,9 @@ class ChatHistoryManager:
             item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             chat_item.setFlags(item_flags)
             chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+
+            if parent_project_item:
+                parent_project_item.setExpanded(True)
 
             tree_widget.setCurrentItem(chat_item)
             return chat_item
@@ -146,6 +155,9 @@ class ChatHistoryManager:
             project_item.setFlags(item_flags)
             project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
 
+            if parent_item:
+                parent_item.setExpanded(True)
+
             tree_widget.setCurrentItem(project_item)
             return project_item
         except OSError as e:
@@ -156,8 +168,10 @@ class ChatHistoryManager:
         """Renames a file or directory."""
         try:
             if old_path.is_file():
+                # For files, use with_stem to change the name before the .json
                 new_path = old_path.with_stem(new_name)
             else:
+                # For directories, just change the name
                 new_path = old_path.with_name(new_name)
 
             if new_path.exists():
@@ -191,4 +205,32 @@ class ChatHistoryManager:
         except OSError as e:
             print(f"Error deleting {path}: {e}")
             return False
+
+    # --- NEW: Method to load a chat file ---
+    def load_chat(self, file_path: Path) -> list[dict]:
+        """Loads a chat history from a JSON file."""
+        if not file_path.exists():
+            print(f"Chat file not found: {file_path}")
+            # Create it with an empty list if it doesn't exist
+            self.save_chat(file_path, [])
+            return []
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                messages = json.load(f)
+                if isinstance(messages, list):
+                    return messages
+                return [] # Return empty list if file content is not a list
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Error loading chat file {file_path}: {e}")
+            return []
+
+    # --- NEW: Method to save a chat file ---
+    def save_chat(self, file_path: Path, messages: list[dict]):
+        """Saves a chat history to a JSON file."""
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(messages, f, indent=2, ensure_ascii=False)
+            print(f"Chat saved to {file_path}")
+        except (IOError, TypeError) as e:
+            print(f"Error saving chat file {file_path}: {e}")
 
