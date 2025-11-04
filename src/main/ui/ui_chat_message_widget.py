@@ -15,8 +15,8 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QSizePolicy, QSpacerItem,
-    QTextEdit, QWidget)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QSizePolicy, QTextEdit,
+    QWidget)
 
 class Ui_ChatMessageWidget(object):
     def setupUi(self, ChatMessageWidget):
@@ -37,15 +37,12 @@ class Ui_ChatMessageWidget(object):
 "                }\n"
 "            ")
         self.mainLayout = QHBoxLayout(ChatMessageWidget)
+        self.mainLayout.setSpacing(0)
         self.mainLayout.setObjectName(u"mainLayout")
-        self.mainLayout.setContentsMargins(0, 2, 0, 2)
-        self.leftSpacer = QSpacerItem(10, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        self.mainLayout.addItem(self.leftSpacer)
-
+        self.mainLayout.setContentsMargins(10, 2, 10, 2)
         self.messageContent = QTextEdit(ChatMessageWidget)
         self.messageContent.setObjectName(u"messageContent")
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.messageContent.sizePolicy().hasHeightForWidth())
@@ -54,10 +51,6 @@ class Ui_ChatMessageWidget(object):
         self.messageContent.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.mainLayout.addWidget(self.messageContent)
-
-        self.rightSpacer = QSpacerItem(10, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-        self.mainLayout.addItem(self.rightSpacer)
 
 
         self.retranslateUi(ChatMessageWidget)

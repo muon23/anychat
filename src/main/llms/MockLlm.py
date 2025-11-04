@@ -40,7 +40,7 @@ class MockLlm(Llm):
         for msg in reversed(prompt):
             role = msg[0]
             if role == Llm.Role.HUMAN or role in ["user", "human"]:
-                return Llm.Response(text=msg[1])
+                return Llm.Response(text="MOCK:  " + msg[1])
 
     def as_runnable(self) -> Runnable:
         return self.llm

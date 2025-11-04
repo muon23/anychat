@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QPoint, Qt
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
@@ -10,8 +11,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItemIterator
 )
 
+# We MUST import PathRole to use it
 from chat_history_manager import ChatHistoryManager, PathRole
-# --- NEW IMPORTS ---
 from chat_message_widget import ChatMessageWidget
 from config_manager import ConfigManager
 from key_manager import KeyManager
@@ -26,7 +27,7 @@ class MainWindow(QMainWindow):
         self.key_manager = key_manager
         self.chat_history_manager = chat_history_manager
 
-        # --- NEW: Initialize LLM Service ---
+        # Init the LLM Service
         self.llm_service = LLMService(self.config_manager, self.key_manager)
 
         self.providers = self.config_manager.get_providers()
@@ -37,13 +38,13 @@ class MainWindow(QMainWindow):
         self.sendButton = None
         self.modelComboBox = None
         self.messageInput = None
-        self.chatDisplay = None # This will now be a QListWidget
+        self.chatDisplay = None # This will be a QListWidget
         self.chatHistoryTree = None
         self.newChatButton = None
         self.newProjectButton = None
 
-        # Store the current chat history (list of role/content dicts)
-        self.current_chat_messages = []
+        # A variable to hold the path of the currently active chat
+        self.current_chat_file_path = None
 
         self._load_ui()
 
@@ -58,6 +59,18 @@ class MainWindow(QMainWindow):
             chat_splitter.setSizes([600, 150])
             print("Chat area splitter found and resized.")
 
+        # Apply dark stylesheet to the QListWidget background
+        if self.chatDisplay:
+            self.chatDisplay.setStyleSheet("background-color: #222222; border: none;")
+            self.chatDisplay.setSpacing(5) # Spacing between bubbles
+
+            # Enable horizontal scrollbar as needed
+            self.chatDisplay.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        else:
+            print("Warning: 'chatDisplay' (QListWidget) not found.")
+
+
         # --- Connect UI Elements ---
         self._connect_signals()
 
@@ -65,13 +78,40 @@ class MainWindow(QMainWindow):
         self._populate_models()
         self._load_chat_history()
 
+    # --- FIX: Correct type hint for 'event' ---
+    def resizeEvent(self, event: QResizeEvent):
+        """
+        This event is called every time the main window is resized.
+        We use it to trigger a size update for all visible chat bubbles.
+        """
+        # Call the parent class's resizeEvent first
+        super().resizeEvent(event)
+        self._on_chat_display_resize()
+
+    def _on_chat_display_resize(self):
+        """
+        Triggers update_size() for all visible chat bubbles.
+        Called by resizeEvent and when the viewport resizes.
+        """
+        if not self.chatDisplay:
+            return
+
+        # Iterate over all items in the QListWidget
+        for i in range(self.chatDisplay.count()):
+            item = self.chatDisplay.item(i)
+            widget = self.chatDisplay.itemWidget(item)
+
+            # If it's one of our custom chat widgets, tell it to update its size
+            if isinstance(widget, ChatMessageWidget):
+                widget.update_size()
+
     def _find_ui_children_by_name(self):
         """Finds all necessary widgets using findChild."""
         self.keysButton = self.findChild(QPushButton, "keysButton")
         self.sendButton = self.findChild(QPushButton, "sendButton")
         self.modelComboBox = self.findChild(QComboBox, "modelComboBox")
         self.messageInput = self.findChild(QTextEdit, "messageInput")
-        self.chatDisplay = self.findChild(QListWidget, "chatDisplay") # <-- Updated type
+        self.chatDisplay = self.findChild(QListWidget, "chatDisplay") # <-- QListWidget
         self.chatHistoryTree = self.findChild(QTreeWidget, "chatHistoryTree")
         self.newChatButton = self.findChild(QPushButton, "newChatButton")
         self.newProjectButton = self.findChild(QPushButton, "newProjectButton")
@@ -93,17 +133,13 @@ class MainWindow(QMainWindow):
             self.sendButton = self.ui.sendButton
             self.modelComboBox = self.ui.modelComboBox
             self.messageInput = self.ui.messageInput
-            self.chatDisplay = self.ui.chatDisplay # This is now a QListWidget
+            self.chatDisplay = self.ui.chatDisplay # <-- QListWidget
             self.chatHistoryTree = self.ui.chatHistoryTree
             self.newChatButton = self.ui.newChatButton
             self.newProjectButton = self.ui.newProjectButton
 
             if self.chatHistoryTree:
                 self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-
-            if self.chatDisplay:
-                # --- STYLESHEET FIX ---
-                self.chatDisplay.setStyleSheet("background-color: #202020; border: none;")
 
         except ImportError as e:
             # If the import fails, fall back to dynamic loading
@@ -123,10 +159,6 @@ class MainWindow(QMainWindow):
 
             if self.chatHistoryTree:
                 self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-
-            if self.chatDisplay:
-                # --- STYLESHEET FIX ---
-                self.chatDisplay.setStyleSheet("background-color: #202020; border: none;")
 
     def _connect_signals(self):
         """Connect all UI signals to their handler methods."""
@@ -153,6 +185,19 @@ class MainWindow(QMainWindow):
         else:
             print("Warning: 'chatHistoryTree' not found.")
 
+        # --- FIX: Connect splitter signals to the resize method ---
+        main_splitter = self.findChild(QSplitter, "mainSplitter")
+        if main_splitter:
+            main_splitter.splitterMoved.connect(self._on_chat_display_resize)
+            print("Main splitter connected to resize.")
+
+        chat_splitter = self.findChild(QSplitter, "chatAreaSplitter")
+        if chat_splitter:
+            chat_splitter.splitterMoved.connect(self._on_chat_display_resize)
+            print("Chat splitter connected to resize.")
+        # --- END FIX ---
+
+
     def _populate_models(self):
         """Populates the modelComboBox with models from the ConfigManager."""
         if self.modelComboBox:
@@ -166,49 +211,70 @@ class MainWindow(QMainWindow):
             print("Warning: 'modelComboBox' not found.")
 
     def _load_chat_history(self):
-        """Tells the chat manager to load history into the tree."""
-        # --- Add state-saving logic ---
-        expanded_state = self._get_expanded_state()
-
+        """Saves expanded state, reloads the tree, and restores expanded state."""
         if self.chatHistoryTree and self.chat_history_manager:
-            self.chatHistoryTree.clear() # Clear first
+            # 1. Save the current expansion state
+            expanded_paths = self._get_expanded_state()
+
+            # 2. Reload the tree
             self.chat_history_manager.load_history(self.chatHistoryTree)
-            print("Chat history loaded into tree.")
+
+            # 3. Restore the expansion state
+            self._set_expanded_state(expanded_paths)
         else:
             print("Warning: 'chatHistoryTree' or 'chat_history_manager' not found.")
 
-        self._set_expanded_state(expanded_state)
-        print("Chat tree expanded state restored.")
-
     def _get_expanded_state(self) -> set:
-        """Saves the expansion state of all project items."""
-        if not self.chatHistoryTree:
-            return set()
-
+        """Returns a set of string paths for all expanded items in the tree."""
         expanded_paths = set()
+        if not self.chatHistoryTree:
+            return expanded_paths
+
         iterator = QTreeWidgetItemIterator(self.chatHistoryTree)
         while iterator.value():
             item = iterator.value()
-            item_path_str = item.data(0, PathRole)
-            if item_path_str and Path(item_path_str).is_dir() and item.isExpanded():
-                expanded_paths.add(item_path_str)
+            if item.isExpanded():
+                path_str = item.data(0, PathRole)
+                if path_str:
+                    expanded_paths.add(path_str)
             iterator += 1
         return expanded_paths
 
     def _set_expanded_state(self, expanded_paths: set):
-        """Restores the expansion state."""
+        """Restores the expansion state of the tree from a set of string paths."""
         if not self.chatHistoryTree or not expanded_paths:
             return
 
         iterator = QTreeWidgetItemIterator(self.chatHistoryTree)
         while iterator.value():
             item = iterator.value()
-            item_path_str = item.data(0, PathRole)
-            if item_path_str in expanded_paths:
+            path_str = item.data(0, PathRole)
+            if path_str in expanded_paths:
                 item.setExpanded(True)
             iterator += 1
 
-    # --- END of state-saving logic ---
+    def _add_chat_message(self, role: str, content: str):
+        """
+        Adds a new chat bubble widget to the chatDisplay (QListWidget).
+        """
+        if not self.chatDisplay:
+            return
+
+        # 1. Create the custom chat widget
+        chat_widget = ChatMessageWidget()
+
+        # 2. Create the QListWidgetItem
+        list_item = QListWidgetItem(self.chatDisplay)
+
+        # 3. Set the message content (this also triggers initial styling and sizing)
+        chat_widget.set_message(role, content, list_item)
+
+        # 4. Set the custom widget as the item for this row in the list
+        self.chatDisplay.setItemWidget(list_item, chat_widget)
+
+        # 5. Ensure the new message is visible
+        self.chatDisplay.scrollToBottom()
+
 
     def _show_tree_context_menu(self, position: QPoint):
         """Shows a context menu when right-clicking on the tree."""
@@ -325,37 +391,17 @@ class MainWindow(QMainWindow):
         """Handles the 'Delete' context menu action."""
         try:
             path_to_delete = Path(item.data(0, PathRole))
-
             if self.chat_history_manager.delete_item(path_to_delete, self.show_delete_warning):
                 self._load_chat_history()
         except Exception as e:
             print(f"Error during delete: {e}")
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
 
-    # --- NEW CHAT BUBBLE METHOD ---
-    def add_chat_message(self, role: str, message: str):
-        """Adds a new chat bubble widget to the chatDisplay."""
-        if not self.chatDisplay:
-            return
-
-        chat_bubble = ChatMessageWidget()
-        list_item = QListWidgetItem(self.chatDisplay)
-
-        # --- UPDATE: Pass the list_item to set_message ---
-        chat_bubble.set_message(role, message, list_item)
-
-        # Set the size hint for the list item (will be auto-updated by widget)
-        list_item.setSizeHint(chat_bubble.sizeHint())
-
-        self.chatDisplay.addItem(list_item)
-        self.chatDisplay.setItemWidget(list_item, chat_bubble)
-        self.chatDisplay.scrollToBottom() # Auto-scroll
-
 
     def handle_send_message(self):
         """Handles the 'Send' button click."""
         if not all([self.messageInput, self.modelComboBox, self.chatDisplay, self.llm_service]):
-            print("Error: UI components not initialized.")
+            print("Error: UI components or services not initialized.")
             return
 
         message = self.messageInput.toPlainText().strip()
@@ -366,35 +412,41 @@ class MainWindow(QMainWindow):
 
         print(f"Sending to {model}: {message}")
 
-        # 1. Add the user's message to the UI
-        self.add_chat_message("user", message)
+        # 1. Add the user's message to the display
+        self._add_chat_message("user", message)
+
+        # 2. Clear the input
         self.messageInput.clear()
 
-        # 2. Add the user's message to the internal history
-        self.current_chat_messages.append({"role": "user", "content": message})
+        # 3. Collect the full chat history
+        # TODO: This needs to load from the current_chat_file_path
+        # For now, it just pulls from the widgets
+        messages = []
+        for i in range(self.chatDisplay.count()):
+            item = self.chatDisplay.item(i)
+            widget = self.chatDisplay.itemWidget(item)
+            if isinstance(widget, ChatMessageWidget):
+                messages.append(widget.get_message_tuple()) # (role, content)
 
-        # 3. Get response from LLM
-        # Note: In a real app, you'd run this in a separate thread (QThread)
-        # to avoid freezing the UI.
+        # 4. Show a "thinking" bubble (optional, but good UX)
+        # self._add_chat_message("assistant", "...thinking...")
+        # We'll just print for now
+        print("Calling LLM service...")
+
+        # 5. Call the LLM service
         try:
-            # Disable send button while processing
-            self.sendButton.setEnabled(False)
-            QApplication.processEvents() # Update UI
+            response = self.llm_service.get_response(model, messages)
 
-            response_text = self.llm_service.get_response(model, self.current_chat_messages)
+            # 6. Add the AI's response to the display
+            self._add_chat_message("assistant", response)
 
-            # 4. Add the AI's response to the UI
-            self.add_chat_message("assistant", response_text)
-
-            # 5. Add the AI's response to the internal history
-            self.current_chat_messages.append({"role": "assistant", "content": response_text})
+            # TODO: Save the full chat history (messages + response)
+            # to self.current_chat_file_path
 
         except Exception as e:
-            print(f"Error getting LLM response: {e}")
-            self.add_chat_message("assistant", f"Sorry, an error occurred: {e}")
-        finally:
-            # Re-enable send button
-            self.sendButton.setEnabled(True)
+            print(f"Error calling LLM: {e}")
+            self._add_chat_message("assistant", f"Error: {e}")
+
 
 ### Main execution block
 if __name__ == "__main__":
