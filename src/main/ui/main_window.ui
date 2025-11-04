@@ -7,21 +7,36 @@
                 <x>0</x>
                 <y>0</y>
                 <width>1134</width>
-                <height>746</height>
+                <height>747</height>
             </rect>
         </property>
         <property name="windowTitle">
             <string>AnyChat</string>
         </property>
         <widget class="QWidget" name="centralwidget">
-            <layout class="QVBoxLayout" name="verticalLayout_4">
+            <layout class="QVBoxLayout" name="verticalLayout">
                 <item>
                     <widget class="QSplitter" name="mainSplitter">
                         <property name="orientation">
                             <enum>Qt::Orientation::Horizontal</enum>
                         </property>
-                        <widget class="QWidget" name="leftNavContainer" native="true">
-                            <layout class="QVBoxLayout" name="verticalLayout_2">
+                        <widget class="QWidget" name="leftPanelWidget" native="true">
+                            <layout class="QVBoxLayout" name="leftPanelLayout">
+                                <property name="spacing">
+                                    <number>6</number>
+                                </property>
+                                <property name="leftMargin">
+                                    <number>0</number>
+                                </property>
+                                <property name="topMargin">
+                                    <number>0</number>
+                                </property>
+                                <property name="rightMargin">
+                                    <number>0</number>
+                                </property>
+                                <property name="bottomMargin">
+                                    <number>0</number>
+                                </property>
                                 <item>
                                     <widget class="QPushButton" name="keysButton">
                                         <property name="text">
@@ -63,51 +78,59 @@
                                 </item>
                                 <item>
                                     <widget class="QTreeWidget" name="chatHistoryTree">
-                                        <property name="sizePolicy">
-                                            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                                                <horstretch>0</horstretch>
-                                                <verstretch>1</verstretch>
-                                            </sizepolicy>
-                                        </property>
-                                        <!-- This is the critical change -->
                                         <property name="contextMenuPolicy">
                                             <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
                                         </property>
+                                        <property name="headerHidden">
+                                            <bool>true</bool>
+                                        </property>
                                         <column>
                                             <property name="text">
-                                                <string>Projects</string>
+                                                <string>Chat History</string>
                                             </property>
                                         </column>
                                     </widget>
                                 </item>
                             </layout>
                         </widget>
-                        <widget class="QWidget" name="chatAreaContainer" native="true">
-                            <layout class="QVBoxLayout" name="verticalLayout">
+                        <widget class="QWidget" name="rightPanelWidget" native="true">
+                            <layout class="QVBoxLayout" name="rightPanelLayout">
+                                <property name="leftMargin">
+                                    <number>0</number>
+                                </property>
+                                <property name="topMargin">
+                                    <number>0</number>
+                                </property>
+                                <property name="rightMargin">
+                                    <number>0</number>
+                                </property>
+                                <property name="bottomMargin">
+                                    <number>0</number>
+                                </property>
                                 <item>
                                     <widget class="QSplitter" name="chatAreaSplitter">
                                         <property name="orientation">
                                             <enum>Qt::Orientation::Vertical</enum>
                                         </property>
-                                        <widget class="QTextEdit" name="chatDisplay">
-                                            <property name="readOnly">
-                                                <bool>true</bool>
+                                        <widget class="QListWidget" name="chatDisplay">
+                                            <property name="frameShape">
+                                                <enum>QFrame::NoFrame</enum>
+                                            </property>
+                                            <property name="selectionMode">
+                                                <enum>QAbstractItemView::NoSelection</enum>
+                                            </property>
+                                            <property name="spacing">
+                                                <number>5</number>
                                             </property>
                                         </widget>
                                         <widget class="QWidget" name="inputContainer" native="true">
                                             <layout class="QVBoxLayout" name="inputContainerLayout">
                                                 <item>
                                                     <widget class="QTextEdit" name="messageInput">
-                                                        <property name="sizePolicy">
-                                                            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                                                                <horstretch>0</horstretch>
-                                                                <verstretch>1</verstretch>
-                                                            </sizepolicy>
-                                                        </property>
                                                         <property name="maximumSize">
                                                             <size>
                                                                 <width>16777215</width>
-                                                                <height>16777215</height>
+                                                                <height>120</height>
                                                             </size>
                                                         </property>
                                                         <property name="placeholderText">
@@ -120,7 +143,7 @@
                                                         <item>
                                                             <widget class="QComboBox" name="modelComboBox">
                                                                 <property name="sizePolicy">
-                                                                    <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                                                                    <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
                                                                         <horstretch>1</horstretch>
                                                                         <verstretch>0</verstretch>
                                                                     </sizepolicy>
@@ -146,16 +169,7 @@
                 </item>
             </layout>
         </widget>
-        <widget class="QMenuBar" name="menubar">
-            <property name="geometry">
-                <rect>
-                    <x>0</x>
-                    <y>0</y>
-                    <width>1134</width>
-                    <height>37</height>
-                </rect>
-            </property>
-        </widget>
+        <widget class="QMenuBar" name="menubar"/>
         <widget class="QStatusBar" name="statusbar"/>
     </widget>
     <resources/>

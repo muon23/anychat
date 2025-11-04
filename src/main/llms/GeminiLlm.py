@@ -124,6 +124,9 @@ class GeminiLlm(Llm):
         """Returns the maximum context window size for the currently selected model."""
         return self.__MODEL_TOKEN_LIMITS.get(self.model_name, 100_000)
 
+    def get_model_name(self) -> str:
+        return self.model_name
+
     @classmethod
     def get_supported_models(cls) -> List[str]:
         """Returns all supported model names (canonical names and aliases)."""

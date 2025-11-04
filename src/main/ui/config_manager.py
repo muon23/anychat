@@ -1,87 +1,142 @@
-import argparse
 import configparser
-import os
+import sys
 from pathlib import Path
 
+
 class ConfigManager:
-    """
-    Manages loading configuration from a properties file (.ini)
-    and command-line arguments.
-    """
-    def __init__(self, default_config_path='deployment/dev/config.ini'):
-        self.config_file = self._get_config_path(default_config_path)
+    def __init__(self):
+        self.config_file = self._find_config_file()
         self.config = configparser.ConfigParser()
         self._load_config()
 
-    def _get_config_path(self, default_path):
-        parser = argparse.ArgumentParser()
-        parser.add_argument('-p', '--properties', help='Path to the properties file.')
-        # Parse known args to avoid conflicts with Qt's args
-        args, _ = parser.parse_known_args()
-        return args.properties if args.properties else default_path
-
-    def _load_config(self):
-        print(f"Loading configuration from: {self.config_file}")
-        if not os.path.exists(self.config_file):
-            print(f"Warning: Config file not found at {self.config_file}. Creating default.")
-            self._create_default_config()
-        try:
-            self.config.read(self.config_file)
-        except configparser.Error as e:
-            print(f"Error reading config file: {e}. Using defaults.")
-            self._set_defaults()
+    def _find_config_file(self):
+        """Find the config file, checking command line args first."""
+        # Check for -p or --properties
+        if '-p' in sys.argv:
+            try:
+                index = sys.argv.index('-p')
+                return Path(sys.argv[index + 1])
+            except (IndexError, ValueError):
+                pass
+        if '--properties' in sys.argv:
+            try:
+                index = sys.argv.index('--properties')
+                return Path(sys.argv[index + 1])
+            except (IndexError, ValueError):
+                pass
+        # Default path
+        return Path("config.ini")
 
     def _set_defaults(self):
-        """Sets in-memory defaults if config file is missing or corrupt."""
+        """Sets in-memory defaults for a clean config object."""
         self.config['General'] = {
             'keys_file': 'deployment/dev/api_keys.json',
-            'chat_history_root': '.',
-            'providers': 'OpenAI, Anthropic, Google AI',
-            'models': 'gpt-4o, claude-3-opus'
+            'chat_history_root': 'deployment/dev/chats',
+            'providers': 'OpenAI, Anthropic, Google AI, DeepInfra',
+            'models': 'gpt-4o, gemini-2.5, llama-4'
+        }
+        self.config['gpt-4o'] = {
+            'temperature': '0.7'
+        }
+        self.config['gemini-2.5'] = {
+            'temperature': '0.8'
+        }
+        self.config['Invocation'] = {
+            'max_tokens': '4096'
         }
 
-    def _create_default_config(self):
-        """Creates a default config file."""
-        self._set_defaults()
+    def _create_default_config_file(self):
+        """Creates a default config file on disk using the in-memory defaults."""
         try:
-            config_path = Path(self.config_file)
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_file, 'w') as f:
+            # Ensure the parent directory exists
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.config_file, 'w', encoding='utf-8') as f:
                 self.config.write(f)
             print(f"Default config file created at {self.config_file}")
-        except OSError as e:
+        except IOError as e:
             print(f"Error: Unable to create default config file: {e}")
 
-    def get_keys_file_path(self) -> str:
-        return self.config.get('General', 'keys_file', fallback='deployment/dev/api_keys.json')
+    def _load_config(self):
+        """
+        Load the config file. If it doesn't exist, create one from defaults.
+        If it's corrupt, load in-memory defaults.
+        """
+        if not self.config_file.exists():
+            print(f"Warning: Config file not found at {self.config_file}. Creating default.")
+            self._set_defaults()
+            self._create_default_config_file()
+            return
 
-    def get_chat_history_root(self) -> str:
-        """Gets the root directory for storing chat histories."""
-        return self.config.get('General', 'chat_history_root', fallback='.')
-
-    def _get_list_from_config(self, section, key) -> list[str]:
-        """Helper to get a comma-separated list from the config."""
         try:
-            list_str = self.config.get(section, key)
-            if not list_str:
-                return []
-            return [item.strip() for item in list_str.split(',') if item.strip()]
-        except (configparser.NoSectionError, configparser.NoOptionError):
+            self.config.read(self.config_file)
+            # Check if it's empty or corrupt
+            if not self.config.sections():
+                raise configparser.Error("Config file is empty or corrupt.")
+        except Exception as e:
+            print(f"Error reading config file: {e}. Loading in-memory defaults.")
+            # Clear the corrupt config and load defaults
+            self.config = configparser.ConfigParser()
+            self._set_defaults()
+
+    def _get_list(self, key):
+        """Helper to get a comma-separated list from the [General] section."""
+        try:
+            value_str = self.config.get('General', key, fallback='')
+            return [item.strip() for item in value_str.split(',') if item.strip()]
+        except Exception:
             return []
 
-    def get_providers(self) -> list[str]:
-        """Reads the list of providers from the [General] section."""
-        providers = self._get_list_from_config('General', 'providers')
-        if not providers:
-            print("Warning: No providers found in config, using defaults.")
-            return ['OpenAI', 'Anthropic', 'Google AI']
-        return providers
+    def get_keys_file_path(self) -> str:
+        return self.config.get('General', 'keys_file', fallback='api_keys.json')
 
-    def get_models(self) -> list[str]:
-        """Reads the list of curated models from the [General] section."""
-        models = self._get_list_from_config('General', 'models')
-        if not models:
-            print("Warning: No models found in config, using defaults.")
-            return ['gpt-4o'] # Fallback to a single default
-        return models
+    def get_chat_history_root(self) -> str:
+        return self.config.get('General', 'chat_history_root', fallback='chats')
+
+    def get_providers(self) -> list:
+        return self._get_list('providers')
+
+    def get_models(self) -> list:
+        return self._get_list('models')
+
+    def get_model_arguments(self, model_name: str) -> dict:
+        """
+        Returns a dictionary of arguments for a specific model,
+        reading from the section [model_name].
+        """
+        args = {}
+        if self.config.has_section(model_name):
+            try:
+                for key, value in self.config.items(model_name):
+                    # Try to convert to float or int, otherwise keep as string
+                    try:
+                        if '.' in value:
+                            args[key] = float(value)
+                        else:
+                            args[key] = int(value)
+                    except ValueError:
+                        args[key] = value
+            except Exception as e:
+                print(f"Error reading model arguments for {model_name}: {e}")
+        return args
+
+    def get_invocation_arguments(self) -> dict:
+        """
+        Returns a dictionary of arguments for the .invoke() call,
+        reading from the [Invocation] section.
+        """
+        args = {}
+        if self.config.has_section('Invocation'):
+            try:
+                for key, value in self.config.items('Invocation'):
+                    # Try to convert to float or int, otherwise keep as string
+                    try:
+                        if '.' in value:
+                            args[key] = float(value)
+                        else:
+                            args[key] = int(value)
+                    except ValueError:
+                        args[key] = value
+            except Exception as e:
+                print(f"Error reading invocation arguments: {e}")
+        return args
 

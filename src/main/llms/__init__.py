@@ -5,12 +5,14 @@ This module serves as the primary factory for creating Llm instances.
 It transparently selects the correct concrete Llm subclass (e.g., GptLlm, GeminiLlm)
 based on the requested model name.
 """
+from typing import Sequence
 
 from llms.DeepInfraLlm import DeepInfraLlm
 from llms.GeminiLlm import GeminiLlm
 from llms.GptLlm import GptLlm
 from llms.HuggingFaceLlm import HuggingFaceLlm
 from llms.Llm import Llm
+from llms.MockLlm import MockLlm
 
 
 def of(model_name: str, **kwargs) -> Llm:
@@ -33,6 +35,9 @@ def of(model_name: str, **kwargs) -> Llm:
     """
     bots = [GptLlm, GeminiLlm, DeepInfraLlm, HuggingFaceLlm]
 
+    if kwargs.pop("mock", False):
+        return MockLlm()
+
     for bot in bots:
         # Check if the model_name is in the list of supported models for this class
         if model_name in bot.get_supported_models():
@@ -43,4 +48,11 @@ def of(model_name: str, **kwargs) -> Llm:
     raise RuntimeError(f"Model {model_name} not supported.")
 
 
+active_llms: dict[str, Llm] = dict()
 
+
+def invoke(model_name: str, prompt: Sequence[tuple[str, str] | str] | str, **kwargs) -> str:
+    if model_name not in active_llms:
+        active_llms[model_name] = of(model_name, **kwargs)
+
+    return active_llms[model_name].invoke(prompt, **kwargs).text

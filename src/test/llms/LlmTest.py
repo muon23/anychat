@@ -134,6 +134,12 @@ class LlmTest(unittest.TestCase):
         print("==============")
         print(answer.text)
 
+    def test_mock_bot_working(self):
+        mock = llms.of("gpt-5", mock=True)
+        test = "This is a test"
+        response = mock.invoke(test)
+        self.assertEqual(test, response.text)
+
 
 if __name__ == '__main__':
     unittest.main()

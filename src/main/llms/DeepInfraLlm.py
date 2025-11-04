@@ -100,6 +100,9 @@ class DeepInfraLlm(Llm):
     def get_max_tokens(self) -> int:
         return self.__MODEL_TOKEN_LIMITS.get(self.model_name, 1000)
 
+    def get_model_name(self) -> str:
+        return self.model_name
+
     @classmethod
     def get_supported_models(cls) -> List[str]:
         return list(cls.MODEL_ALIASES.keys()) + cls.SUPPORTED_MODELS

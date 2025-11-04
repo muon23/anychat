@@ -15,82 +15,83 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QComboBox, QFrame, QHBoxLayout,
-    QHeaderView, QLineEdit, QMainWindow, QMenuBar,
-    QPushButton, QSizePolicy, QSplitter, QStatusBar,
-    QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
-    QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QFrame,
+    QHBoxLayout, QHeaderView, QLineEdit, QListWidget,
+    QListWidgetItem, QMainWindow, QMenuBar, QPushButton,
+    QSizePolicy, QSplitter, QStatusBar, QTextEdit,
+    QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(1134, 746)
+        MainWindow.resize(1134, 747)
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
-        self.verticalLayout_4 = QVBoxLayout(self.centralwidget)
-        self.verticalLayout_4.setObjectName(u"verticalLayout_4")
+        self.verticalLayout = QVBoxLayout(self.centralwidget)
+        self.verticalLayout.setObjectName(u"verticalLayout")
         self.mainSplitter = QSplitter(self.centralwidget)
         self.mainSplitter.setObjectName(u"mainSplitter")
         self.mainSplitter.setOrientation(Qt.Orientation.Horizontal)
-        self.leftNavContainer = QWidget(self.mainSplitter)
-        self.leftNavContainer.setObjectName(u"leftNavContainer")
-        self.verticalLayout_2 = QVBoxLayout(self.leftNavContainer)
-        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
-        self.keysButton = QPushButton(self.leftNavContainer)
+        self.leftPanelWidget = QWidget(self.mainSplitter)
+        self.leftPanelWidget.setObjectName(u"leftPanelWidget")
+        self.leftPanelLayout = QVBoxLayout(self.leftPanelWidget)
+        self.leftPanelLayout.setSpacing(6)
+        self.leftPanelLayout.setObjectName(u"leftPanelLayout")
+        self.leftPanelLayout.setContentsMargins(0, 0, 0, 0)
+        self.keysButton = QPushButton(self.leftPanelWidget)
         self.keysButton.setObjectName(u"keysButton")
 
-        self.verticalLayout_2.addWidget(self.keysButton)
+        self.leftPanelLayout.addWidget(self.keysButton)
 
-        self.searchBar = QLineEdit(self.leftNavContainer)
+        self.searchBar = QLineEdit(self.leftPanelWidget)
         self.searchBar.setObjectName(u"searchBar")
 
-        self.verticalLayout_2.addWidget(self.searchBar)
+        self.leftPanelLayout.addWidget(self.searchBar)
 
         self.newButtonsLayout = QHBoxLayout()
         self.newButtonsLayout.setObjectName(u"newButtonsLayout")
-        self.newChatButton = QPushButton(self.leftNavContainer)
+        self.newChatButton = QPushButton(self.leftPanelWidget)
         self.newChatButton.setObjectName(u"newChatButton")
 
         self.newButtonsLayout.addWidget(self.newChatButton)
 
-        self.newProjectButton = QPushButton(self.leftNavContainer)
+        self.newProjectButton = QPushButton(self.leftPanelWidget)
         self.newProjectButton.setObjectName(u"newProjectButton")
 
         self.newButtonsLayout.addWidget(self.newProjectButton)
 
 
-        self.verticalLayout_2.addLayout(self.newButtonsLayout)
+        self.leftPanelLayout.addLayout(self.newButtonsLayout)
 
-        self.line = QFrame(self.leftNavContainer)
+        self.line = QFrame(self.leftPanelWidget)
         self.line.setObjectName(u"line")
         self.line.setFrameShape(QFrame.Shape.HLine)
         self.line.setFrameShadow(QFrame.Shadow.Sunken)
 
-        self.verticalLayout_2.addWidget(self.line)
+        self.leftPanelLayout.addWidget(self.line)
 
-        self.chatHistoryTree = QTreeWidget(self.leftNavContainer)
+        self.chatHistoryTree = QTreeWidget(self.leftPanelWidget)
         self.chatHistoryTree.setObjectName(u"chatHistoryTree")
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(1)
-        sizePolicy.setHeightForWidth(self.chatHistoryTree.sizePolicy().hasHeightForWidth())
-        self.chatHistoryTree.setSizePolicy(sizePolicy)
         self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.chatHistoryTree.setHeaderHidden(True)
 
-        self.verticalLayout_2.addWidget(self.chatHistoryTree)
+        self.leftPanelLayout.addWidget(self.chatHistoryTree)
 
-        self.mainSplitter.addWidget(self.leftNavContainer)
-        self.chatAreaContainer = QWidget(self.mainSplitter)
-        self.chatAreaContainer.setObjectName(u"chatAreaContainer")
-        self.verticalLayout = QVBoxLayout(self.chatAreaContainer)
-        self.verticalLayout.setObjectName(u"verticalLayout")
-        self.chatAreaSplitter = QSplitter(self.chatAreaContainer)
+        self.mainSplitter.addWidget(self.leftPanelWidget)
+        self.rightPanelWidget = QWidget(self.mainSplitter)
+        self.rightPanelWidget.setObjectName(u"rightPanelWidget")
+        self.rightPanelLayout = QVBoxLayout(self.rightPanelWidget)
+        self.rightPanelLayout.setObjectName(u"rightPanelLayout")
+        self.rightPanelLayout.setContentsMargins(0, 0, 0, 0)
+        self.chatAreaSplitter = QSplitter(self.rightPanelWidget)
         self.chatAreaSplitter.setObjectName(u"chatAreaSplitter")
         self.chatAreaSplitter.setOrientation(Qt.Orientation.Vertical)
-        self.chatDisplay = QTextEdit(self.chatAreaSplitter)
+        self.chatDisplay = QListWidget(self.chatAreaSplitter)
         self.chatDisplay.setObjectName(u"chatDisplay")
-        self.chatDisplay.setReadOnly(True)
+        self.chatDisplay.setFrameShape(QFrame.NoFrame)
+        self.chatDisplay.setSelectionMode(QAbstractItemView.NoSelection)
+        self.chatDisplay.setSpacing(5)
         self.chatAreaSplitter.addWidget(self.chatDisplay)
         self.inputContainer = QWidget(self.chatAreaSplitter)
         self.inputContainer.setObjectName(u"inputContainer")
@@ -98,9 +99,7 @@ class Ui_MainWindow(object):
         self.inputContainerLayout.setObjectName(u"inputContainerLayout")
         self.messageInput = QTextEdit(self.inputContainer)
         self.messageInput.setObjectName(u"messageInput")
-        sizePolicy.setHeightForWidth(self.messageInput.sizePolicy().hasHeightForWidth())
-        self.messageInput.setSizePolicy(sizePolicy)
-        self.messageInput.setMaximumSize(QSize(16777215, 16777215))
+        self.messageInput.setMaximumSize(QSize(16777215, 120))
 
         self.inputContainerLayout.addWidget(self.messageInput)
 
@@ -108,11 +107,11 @@ class Ui_MainWindow(object):
         self.bottomControlsLayout.setObjectName(u"bottomControlsLayout")
         self.modelComboBox = QComboBox(self.inputContainer)
         self.modelComboBox.setObjectName(u"modelComboBox")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        sizePolicy1.setHorizontalStretch(1)
-        sizePolicy1.setVerticalStretch(0)
-        sizePolicy1.setHeightForWidth(self.modelComboBox.sizePolicy().hasHeightForWidth())
-        self.modelComboBox.setSizePolicy(sizePolicy1)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(1)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.modelComboBox.sizePolicy().hasHeightForWidth())
+        self.modelComboBox.setSizePolicy(sizePolicy)
 
         self.bottomControlsLayout.addWidget(self.modelComboBox)
 
@@ -126,16 +125,15 @@ class Ui_MainWindow(object):
 
         self.chatAreaSplitter.addWidget(self.inputContainer)
 
-        self.verticalLayout.addWidget(self.chatAreaSplitter)
+        self.rightPanelLayout.addWidget(self.chatAreaSplitter)
 
-        self.mainSplitter.addWidget(self.chatAreaContainer)
+        self.mainSplitter.addWidget(self.rightPanelWidget)
 
-        self.verticalLayout_4.addWidget(self.mainSplitter)
+        self.verticalLayout.addWidget(self.mainSplitter)
 
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 1134, 37))
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QStatusBar(MainWindow)
         self.statusbar.setObjectName(u"statusbar")
@@ -153,7 +151,7 @@ class Ui_MainWindow(object):
         self.newChatButton.setText(QCoreApplication.translate("MainWindow", u"New Chat", None))
         self.newProjectButton.setText(QCoreApplication.translate("MainWindow", u"New Project", None))
         ___qtreewidgetitem = self.chatHistoryTree.headerItem()
-        ___qtreewidgetitem.setText(0, QCoreApplication.translate("MainWindow", u"Projects", None));
+        ___qtreewidgetitem.setText(0, QCoreApplication.translate("MainWindow", u"Chat History", None));
         self.messageInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"Ask anything...", None))
         self.sendButton.setText(QCoreApplication.translate("MainWindow", u"Send", None))
     # retranslateUi

@@ -135,6 +135,13 @@ class Llm(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_model_name(self) -> str:
+        """
+        Returns canonical model name
+        """
+        pass
+
     def get_default_task(self) -> str:
         """Returns the default task type for metadata."""
         return "chat"

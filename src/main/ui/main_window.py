@@ -6,14 +6,17 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
     QTextEdit, QComboBox, QTreeWidget, QMenu, QMessageBox,
-    QInputDialog, QTreeWidgetItem, QTreeWidgetItemIterator
+    QInputDialog, QTreeWidgetItem, QListWidget, QListWidgetItem,
+    QTreeWidgetItemIterator
 )
 
-# We MUST import PathRole to use it
 from chat_history_manager import ChatHistoryManager, PathRole
+# --- NEW IMPORTS ---
+from chat_message_widget import ChatMessageWidget
 from config_manager import ConfigManager
 from key_manager import KeyManager
 from keys_dialog import KeysDialog
+from llm_service import LLMService
 
 
 class MainWindow(QMainWindow):
@@ -23,6 +26,9 @@ class MainWindow(QMainWindow):
         self.key_manager = key_manager
         self.chat_history_manager = chat_history_manager
 
+        # --- NEW: Initialize LLM Service ---
+        self.llm_service = LLMService(self.config_manager, self.key_manager)
+
         self.providers = self.config_manager.get_providers()
 
         # Placeholders for UI widgets
@@ -31,10 +37,13 @@ class MainWindow(QMainWindow):
         self.sendButton = None
         self.modelComboBox = None
         self.messageInput = None
-        self.chatDisplay = None
+        self.chatDisplay = None # This will now be a QListWidget
         self.chatHistoryTree = None
         self.newChatButton = None
         self.newProjectButton = None
+
+        # Store the current chat history (list of role/content dicts)
+        self.current_chat_messages = []
 
         self._load_ui()
 
@@ -62,7 +71,7 @@ class MainWindow(QMainWindow):
         self.sendButton = self.findChild(QPushButton, "sendButton")
         self.modelComboBox = self.findChild(QComboBox, "modelComboBox")
         self.messageInput = self.findChild(QTextEdit, "messageInput")
-        self.chatDisplay = self.findChild(QTextEdit, "chatDisplay")
+        self.chatDisplay = self.findChild(QListWidget, "chatDisplay") # <-- Updated type
         self.chatHistoryTree = self.findChild(QTreeWidget, "chatHistoryTree")
         self.newChatButton = self.findChild(QPushButton, "newChatButton")
         self.newProjectButton = self.findChild(QPushButton, "newProjectButton")
@@ -84,13 +93,17 @@ class MainWindow(QMainWindow):
             self.sendButton = self.ui.sendButton
             self.modelComboBox = self.ui.modelComboBox
             self.messageInput = self.ui.messageInput
-            self.chatDisplay = self.ui.chatDisplay
+            self.chatDisplay = self.ui.chatDisplay # This is now a QListWidget
             self.chatHistoryTree = self.ui.chatHistoryTree
             self.newChatButton = self.ui.newChatButton
             self.newProjectButton = self.ui.newProjectButton
 
             if self.chatHistoryTree:
                 self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+            if self.chatDisplay:
+                # --- STYLESHEET FIX ---
+                self.chatDisplay.setStyleSheet("background-color: #202020; border: none;")
 
         except ImportError as e:
             # If the import fails, fall back to dynamic loading
@@ -110,6 +123,10 @@ class MainWindow(QMainWindow):
 
             if self.chatHistoryTree:
                 self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+            if self.chatDisplay:
+                # --- STYLESHEET FIX ---
+                self.chatDisplay.setStyleSheet("background-color: #202020; border: none;")
 
     def _connect_signals(self):
         """Connect all UI signals to their handler methods."""
@@ -132,6 +149,7 @@ class MainWindow(QMainWindow):
         if self.chatHistoryTree:
             self.chatHistoryTree.customContextMenuRequested.connect(self._show_tree_context_menu)
             print("Tree context menu connected.")
+            # TODO: Connect self.chatHistoryTree.currentItemChanged to load a chat
         else:
             print("Warning: 'chatHistoryTree' not found.")
 
@@ -147,9 +165,23 @@ class MainWindow(QMainWindow):
         else:
             print("Warning: 'modelComboBox' not found.")
 
-    # --- NEW: Helper method to get all expanded item paths ---
+    def _load_chat_history(self):
+        """Tells the chat manager to load history into the tree."""
+        # --- Add state-saving logic ---
+        expanded_state = self._get_expanded_state()
+
+        if self.chatHistoryTree and self.chat_history_manager:
+            self.chatHistoryTree.clear() # Clear first
+            self.chat_history_manager.load_history(self.chatHistoryTree)
+            print("Chat history loaded into tree.")
+        else:
+            print("Warning: 'chatHistoryTree' or 'chat_history_manager' not found.")
+
+        self._set_expanded_state(expanded_state)
+        print("Chat tree expanded state restored.")
+
     def _get_expanded_state(self) -> set:
-        """Saves the expanded state of the tree."""
+        """Saves the expansion state of all project items."""
         if not self.chatHistoryTree:
             return set()
 
@@ -157,41 +189,26 @@ class MainWindow(QMainWindow):
         iterator = QTreeWidgetItemIterator(self.chatHistoryTree)
         while iterator.value():
             item = iterator.value()
-            if item.isExpanded():
-                path_str = item.data(0, PathRole)
-                if path_str:
-                    expanded_paths.add(path_str)
+            item_path_str = item.data(0, PathRole)
+            if item_path_str and Path(item_path_str).is_dir() and item.isExpanded():
+                expanded_paths.add(item_path_str)
             iterator += 1
         return expanded_paths
 
-    # --- NEW: Helper method to restore expanded state ---
     def _set_expanded_state(self, expanded_paths: set):
-        """Restores the expanded state of the tree."""
+        """Restores the expansion state."""
         if not self.chatHistoryTree or not expanded_paths:
             return
 
         iterator = QTreeWidgetItemIterator(self.chatHistoryTree)
         while iterator.value():
             item = iterator.value()
-            path_str = item.data(0, PathRole)
-            if path_str in expanded_paths:
+            item_path_str = item.data(0, PathRole)
+            if item_path_str in expanded_paths:
                 item.setExpanded(True)
             iterator += 1
 
-    def _load_chat_history(self):
-        """Tells the chat manager to load history into the tree, preserving state."""
-        if not self.chatHistoryTree or not self.chat_history_manager:
-            print("Warning: 'chatHistoryTree' or 'chat_history_manager' not found.")
-            return
-
-        # 1. Get the current state
-        expanded_state = self._get_expanded_state()
-
-        # 2. Reload the tree (this collapses everything)
-        self.chat_history_manager.load_history(self.chatHistoryTree)
-
-        # 3. Restore the saved state
-        self._set_expanded_state(expanded_state)
+    # --- END of state-saving logic ---
 
     def _show_tree_context_menu(self, position: QPoint):
         """Shows a context menu when right-clicking on the tree."""
@@ -284,7 +301,7 @@ class MainWindow(QMainWindow):
 
     def handle_new_subproject(self, project_item: QTreeWidgetItem):
         """Creates a subproject inside the selected project."""
-        print(f"New SubSproject in '{project_item.text(0)}' clicked.")
+        print(f"New Subproject in '{project_item.text(0)}' clicked.")
         if self.chatHistoryTree and self.chat_history_manager:
             self.chat_history_manager.create_project(self.chatHistoryTree, parent_item=project_item)
 
@@ -292,17 +309,13 @@ class MainWindow(QMainWindow):
         """Handles the 'Rename' context menu action."""
         try:
             old_path = Path(item.data(0, PathRole))
-
-            # Use .stem for files to edit name without .json, .name for directories
             old_name = old_path.stem if old_path.is_file() else old_path.name
 
             new_name, ok = QInputDialog.getText(self, "Rename Item", "Enter new name:",
                                                 text=old_name)
 
             if ok and new_name and new_name != old_name:
-                # We pass 'self' (the main window) as the parent for pop-up warnings
                 if self.chat_history_manager.rename_item(old_path, new_name, self):
-                    # Reload the tree to show the change
                     self._load_chat_history()
         except Exception as e:
             print(f"Error during rename: {e}")
@@ -313,31 +326,75 @@ class MainWindow(QMainWindow):
         try:
             path_to_delete = Path(item.data(0, PathRole))
 
-            # Pass our warning dialog function as a callback
             if self.chat_history_manager.delete_item(path_to_delete, self.show_delete_warning):
-                # Reload the tree to show the change
                 self._load_chat_history()
         except Exception as e:
             print(f"Error during delete: {e}")
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
 
+    # --- NEW CHAT BUBBLE METHOD ---
+    def add_chat_message(self, role: str, message: str):
+        """Adds a new chat bubble widget to the chatDisplay."""
+        if not self.chatDisplay:
+            return
+
+        chat_bubble = ChatMessageWidget()
+        list_item = QListWidgetItem(self.chatDisplay)
+
+        # --- UPDATE: Pass the list_item to set_message ---
+        chat_bubble.set_message(role, message, list_item)
+
+        # Set the size hint for the list item (will be auto-updated by widget)
+        list_item.setSizeHint(chat_bubble.sizeHint())
+
+        self.chatDisplay.addItem(list_item)
+        self.chatDisplay.setItemWidget(list_item, chat_bubble)
+        self.chatDisplay.scrollToBottom() # Auto-scroll
+
+
     def handle_send_message(self):
         """Handles the 'Send' button click."""
-        if self.messageInput and self.modelComboBox and self.chatDisplay:
-            message = self.messageInput.toPlainText().strip()
-            model = self.modelComboBox.currentText()
+        if not all([self.messageInput, self.modelComboBox, self.chatDisplay, self.llm_service]):
+            print("Error: UI components not initialized.")
+            return
 
-            if not message:
-                return  # Don't send empty messages
+        message = self.messageInput.toPlainText().strip()
+        model = self.modelComboBox.currentText()
 
-            print(f"Sending to {model}: {message}")
+        if not message:
+            return  # Don't send empty messages
 
-            self.chatDisplay.append(f"<b>You:</b> {message}\n")
-            self.messageInput.clear()
+        print(f"Sending to {model}: {message}")
 
-            # --- TODO: Add logic here to call the LLM ---
-            # self.chatDisplay.append(f"<b>{model}:</b> ...thinking...")
+        # 1. Add the user's message to the UI
+        self.add_chat_message("user", message)
+        self.messageInput.clear()
 
+        # 2. Add the user's message to the internal history
+        self.current_chat_messages.append({"role": "user", "content": message})
+
+        # 3. Get response from LLM
+        # Note: In a real app, you'd run this in a separate thread (QThread)
+        # to avoid freezing the UI.
+        try:
+            # Disable send button while processing
+            self.sendButton.setEnabled(False)
+            QApplication.processEvents() # Update UI
+
+            response_text = self.llm_service.get_response(model, self.current_chat_messages)
+
+            # 4. Add the AI's response to the UI
+            self.add_chat_message("assistant", response_text)
+
+            # 5. Add the AI's response to the internal history
+            self.current_chat_messages.append({"role": "assistant", "content": response_text})
+
+        except Exception as e:
+            print(f"Error getting LLM response: {e}")
+            self.add_chat_message("assistant", f"Sorry, an error occurred: {e}")
+        finally:
+            # Re-enable send button
+            self.sendButton.setEnabled(True)
 
 ### Main execution block
 if __name__ == "__main__":
@@ -358,7 +415,6 @@ if __name__ == "__main__":
     key_manager = KeyManager(keys_file_path, providers)
 
     chat_history_path = Path(chat_history_root_str)
-    # Make sure the chat history manager creates the root dir
     chat_history_path.mkdir(parents=True, exist_ok=True)
     print(f"Chat history root initialized at: {chat_history_path.resolve()}")
     chat_history_manager = ChatHistoryManager(chat_history_path)
