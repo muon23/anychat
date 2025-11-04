@@ -7,13 +7,16 @@ try:
     from ui_chat_message_widget import Ui_ChatMessageWidget
 except ImportError:
     print("Error: Could not import ui_chat_message_widget.py.")
+
+
     class Ui_ChatMessageWidget:
         def setupUi(self, widget): pass
+
         def __getattr__(self, name): return None
+
 
 class ChatMessageWidget(QWidget):
     MIN_BUBBLE_WIDTH = 250
-    # --- FIX: Use 90% as requested ---
     MAX_BUBBLE_RATIO = 0.9
     BUBBLE_PADDING = 8
 
@@ -58,7 +61,7 @@ class ChatMessageWidget(QWidget):
         return ""
 
     def get_message_tuple(self) -> tuple:
-        return (self.role, self.get_content())
+        return self.role, self.get_content()
 
     def update_size(self):
         """
@@ -105,4 +108,3 @@ class ChatMessageWidget(QWidget):
         # 6. Set the *row's* size hint
         total_height = final_bubble_height + layout_margins.top() + layout_margins.bottom()
         self.list_item.setSizeHint(QSize(viewport_width, int(total_height)))
-

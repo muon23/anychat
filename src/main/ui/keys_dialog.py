@@ -23,12 +23,10 @@ class KeysDialog(QDialog):
         super().__init__(parent)
         self.key_manager = key_manager
 
-        # --- This is the new, correct initialization ---
         # 1. Create an instance of the compiled UI class
         self.ui = Ui_KeysDialog()
         # 2. Set up the UI (widgets, layouts, etc.) onto this QDialog
         self.ui.setupUi(self)
-        # --- End of new initialization ---
 
         # Store our line edits in a dictionary for easy access
         self.provider_inputs = {}

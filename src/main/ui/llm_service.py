@@ -1,30 +1,5 @@
-import sys
-from pathlib import Path
 import traceback
-
-# --- Add parent directory to sys.path ---
-# This assumes llm_service.py is in src/main/ui and llms is in src/main/llms
-try:
-    current_file_path = Path(__file__).resolve()
-    parent_dir = current_file_path.parent
-    main_dir = parent_dir.parent
-
-    if str(main_dir) not in sys.path:
-        sys.path.append(str(main_dir))
-        print(f"Added {main_dir} to sys.path for llms module")
-
-    import llms
-except ImportError as e:
-    print(f"CRITICAL: Error importing local llms module: {e}")
-    # Create a mock llms object if import fails, so the app can still run
-    class MockLLM:
-        def invoke(self, *args, **kwargs):
-            return type('obj', (object,), {'text': f'Error: llms module not found. {e}'})
-
-    class MockLLMs:
-        def of(self, *args, **kwargs):
-            return MockLLM()
-    llms = MockLLMs()
+import llms
 
 
 class LLMService:
@@ -39,10 +14,8 @@ class LLMService:
         try:
             print(f"LLMService: Getting response for model: {model_name}")
 
-            # --- FIX: Use the correct function names ---
             model_args = self.config_manager.get_model_arguments(model_name)
             invocation_args = self.config_manager.get_invocation_arguments()
-            # --- END FIX ---
 
             # 2. Get provider and key
             provider = model_args.get("provider")
@@ -78,6 +51,5 @@ class LLMService:
 
         except Exception as e:
             print(f"Error during LLM call: {e}")
-            traceback.print_exc() # Print full traceback to console
+            traceback.print_exc()  # Print full traceback to console
             return f"Error: {e}"
-

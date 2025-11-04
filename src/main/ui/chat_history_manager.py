@@ -17,7 +17,8 @@ class ChatHistoryManager:
         # Ensure the root directory exists
         self.history_root.mkdir(parents=True, exist_ok=True)
 
-    def _get_icons(self):
+    @classmethod
+    def _get_icons(cls):
         """Helper to get standard system icons."""
         style = QApplication.style()
         return {
@@ -51,7 +52,7 @@ class ChatHistoryManager:
                     chat_item.setIcon(0, icons["file"])
                     chat_item.setData(0, PathRole, str(path))
                     chat_item.setFlags(item_flags)
-                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
         except OSError as e:
             print(f"Error reading directory {parent_dir}: {e}")
 
@@ -59,7 +60,7 @@ class ChatHistoryManager:
         """Clears and reloads the entire chat history into the QTreeWidget."""
         tree_widget.clear()
         icons = self._get_icons()
-        tree_widget.setHeaderHidden(True) # Hide the "1" header
+        tree_widget.setHeaderHidden(True)  # Hide the "1" header
 
         try:
             for name in sorted(os.listdir(self.history_root)):
@@ -75,14 +76,14 @@ class ChatHistoryManager:
                     chat_item.setIcon(0, icons["file"])
                     chat_item.setData(0, PathRole, str(path))
                     chat_item.setFlags(item_flags)
-                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+                    chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
                 elif path.is_dir():
                     project_item = QTreeWidgetItem(tree_widget, [name])
                     project_item.setIcon(0, icons["folder"])
                     project_item.setData(0, PathRole, str(path))
-                    item_flags |= Qt.ItemFlag.ItemIsDropEnabled # Make it a parent
+                    item_flags |= Qt.ItemFlag.ItemIsDropEnabled  # Make it a parent
                     project_item.setFlags(item_flags)
-                    project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+                    project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
                     self._load_recursive(path, project_item, icons)
         except OSError as e:
             print(f"Error reading history root {self.history_root}: {e}")
@@ -117,7 +118,7 @@ class ChatHistoryManager:
             chat_item.setData(0, PathRole, str(new_chat_path))
             item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             chat_item.setFlags(item_flags)
-            chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+            chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
 
             if parent_project_item:
                 parent_project_item.setExpanded(True)
@@ -153,7 +154,7 @@ class ChatHistoryManager:
             project_item.setData(0, PathRole, str(new_project_path))
             item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDropEnabled)
             project_item.setFlags(item_flags)
-            project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None) # Hide checkbox
+            project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
 
             if parent_item:
                 parent_item.setExpanded(True)
@@ -164,7 +165,8 @@ class ChatHistoryManager:
             print(f"Error creating new project: {e}")
             return None
 
-    def rename_item(self, old_path: Path, new_name: str, parent_widget) -> bool:
+    @classmethod
+    def rename_item(cls, old_path: Path, new_name: str, parent_widget) -> bool:
         """Renames a file or directory."""
         try:
             if old_path.is_file():
@@ -184,7 +186,8 @@ class ChatHistoryManager:
             QMessageBox.warning(parent_widget, "Rename Error", f"Could not rename: {e}")
             return False
 
-    def delete_item(self, path: Path, warning_callback) -> bool:
+    @classmethod
+    def delete_item(cls, path: Path, warning_callback) -> bool:
         """Deletes a file or directory. Uses callback for non-empty dir warning."""
         try:
             if path.is_file():
@@ -201,31 +204,31 @@ class ChatHistoryManager:
                         shutil.rmtree(path)
                         return True
                     else:
-                        return False # User cancelled
+                        return False  # User cancelled
         except OSError as e:
             print(f"Error deleting {path}: {e}")
             return False
 
-    # --- NEW: Method to load a chat file ---
-    def load_chat(self, file_path: Path) -> list[dict]:
+    @classmethod
+    def load_chat(cls, file_path: Path) -> list[dict]:
         """Loads a chat history from a JSON file."""
         if not file_path.exists():
             print(f"Chat file not found: {file_path}")
             # Create it with an empty list if it doesn't exist
-            self.save_chat(file_path, [])
+            cls.save_chat(file_path, [])
             return []
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 messages = json.load(f)
                 if isinstance(messages, list):
                     return messages
-                return [] # Return empty list if file content is not a list
+                return []  # Return empty list if file content is not a list
         except (json.JSONDecodeError, OSError) as e:
             print(f"Error loading chat file {file_path}: {e}")
             return []
 
-    # --- NEW: Method to save a chat file ---
-    def save_chat(self, file_path: Path, messages: list[dict]):
+    @classmethod
+    def save_chat(cls, file_path: Path, messages: list[dict]):
         """Saves a chat history to a JSON file."""
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -233,4 +236,3 @@ class ChatHistoryManager:
             print(f"Chat saved to {file_path}")
         except (IOError, TypeError) as e:
             print(f"Error saving chat file {file_path}: {e}")
-

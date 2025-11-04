@@ -9,7 +9,8 @@ class ConfigManager:
         self.config = configparser.ConfigParser()
         self._load_config()
 
-    def _find_config_file(self):
+    @classmethod
+    def _find_config_file(cls):
         """Find the config file, checking command line args first."""
         # Check for -p or --properties
         if '-p' in sys.argv:
@@ -139,4 +140,3 @@ class ConfigManager:
             except Exception as e:
                 print(f"Error reading invocation arguments: {e}")
         return args
-

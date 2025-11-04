@@ -25,10 +25,6 @@
                 </widget>
             </item>
             <item>
-                <!--
-                  THIS IS THE CRITICAL FIX:
-                  It must be a <layout>, not a <widget>.
-                -->
                 <layout class="QFormLayout" name="keyFormLayout"/>
             </item>
             <item>

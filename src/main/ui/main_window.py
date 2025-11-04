@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         self.sendButton = None
         self.modelComboBox = None
         self.messageInput = None
-        self.chatDisplay = None # This will be a QListWidget
+        self.chatDisplay = None  # This will be a QListWidget
         self.chatHistoryTree = None
         self.newChatButton = None
         self.newProjectButton = None
@@ -64,14 +64,13 @@ class MainWindow(QMainWindow):
         # Apply dark stylesheet to the QListWidget background
         if self.chatDisplay:
             self.chatDisplay.setStyleSheet("background-color: #222222; border: none;")
-            self.chatDisplay.setSpacing(5) # Spacing between bubbles
+            self.chatDisplay.setSpacing(5)  # Spacing between bubbles
 
             # Enable horizontal scrollbar as needed
             self.chatDisplay.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         else:
             print("Warning: 'chatDisplay' (QListWidget) not found.")
-
 
         # --- Connect UI Elements ---
         self._connect_signals()
@@ -112,7 +111,7 @@ class MainWindow(QMainWindow):
         self.sendButton = self.findChild(QPushButton, "sendButton")
         self.modelComboBox = self.findChild(QComboBox, "modelComboBox")
         self.messageInput = self.findChild(QTextEdit, "messageInput")
-        self.chatDisplay = self.findChild(QListWidget, "chatDisplay") # <-- QListWidget
+        self.chatDisplay = self.findChild(QListWidget, "chatDisplay")  # <-- QListWidget
         self.chatHistoryTree = self.findChild(QTreeWidget, "chatHistoryTree")
         self.newChatButton = self.findChild(QPushButton, "newChatButton")
         self.newProjectButton = self.findChild(QPushButton, "newProjectButton")
@@ -134,7 +133,7 @@ class MainWindow(QMainWindow):
             self.sendButton = self.ui.sendButton
             self.modelComboBox = self.ui.modelComboBox
             self.messageInput = self.ui.messageInput
-            self.chatDisplay = self.ui.chatDisplay # <-- QListWidget
+            self.chatDisplay = self.ui.chatDisplay  # <-- QListWidget
             self.chatHistoryTree = self.ui.chatHistoryTree
             self.newChatButton = self.ui.newChatButton
             self.newProjectButton = self.ui.newProjectButton
@@ -197,7 +196,6 @@ class MainWindow(QMainWindow):
         if chat_splitter:
             chat_splitter.splitterMoved.connect(self._on_chat_display_resize)
             print("Chat splitter connected to resize.")
-
 
     def _populate_models(self):
         """Populates the modelComboBox with models from the ConfigManager."""
@@ -265,11 +263,9 @@ class MainWindow(QMainWindow):
         self.chatDisplay.setItemWidget(list_item, chat_widget)
         self.chatDisplay.scrollToBottom()
 
-        # --- THIS IS THE FIX ---
         # After adding the widget and scrolling,
         # force a resize of all items *now* that the viewport is stable.
         self._on_chat_display_resize()
-        # --- END FIX ---
 
         return chat_widget
 
@@ -281,7 +277,6 @@ class MainWindow(QMainWindow):
             self.messageInput.clear()
         # Do NOT clear self.current_messages here
 
-
     def _on_tree_item_selected(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
         """
         Handles loading a chat when an item in the tree is clicked.
@@ -289,7 +284,7 @@ class MainWindow(QMainWindow):
         if not current:
             # No item selected
             self.current_chat_file_path = None
-            self.current_messages = [] # Clear messages
+            self.current_messages = []  # Clear messages
             self._clear_chat_display()
             return
 
@@ -302,7 +297,7 @@ class MainWindow(QMainWindow):
         if item_path.is_dir():
             # It's a project, not a chat file. Clear display.
             self.current_chat_file_path = None
-            self.current_messages = [] # Clear messages
+            self.current_messages = []  # Clear messages
             self._clear_chat_display()
 
         elif item_path.is_file() and item_path.suffix == '.json':
@@ -371,7 +366,6 @@ class MainWindow(QMainWindow):
 
         # Update the internal state
         self.current_messages = messages_to_save
-
 
     def _show_tree_context_menu(self, position: QPoint):
         """Shows a context menu when right-clicking on the tree."""
@@ -462,7 +456,6 @@ class MainWindow(QMainWindow):
             if new_item:
                 self.chatHistoryTree.setCurrentItem(new_item)
 
-
     def handle_rename_item(self, item: QTreeWidgetItem):
         """Handles the 'Rename' context menu action."""
         try:
@@ -489,7 +482,6 @@ class MainWindow(QMainWindow):
             print(f"Error during delete: {e}")
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
 
-
     def handle_send_message(self):
         """Handles the 'Send' button click."""
         if not all([self.messageInput, self.modelComboBox, self.chatDisplay, self.llm_service]):
@@ -497,7 +489,8 @@ class MainWindow(QMainWindow):
             return
 
         if not self.current_chat_file_path:
-            QMessageBox.warning(self, "No Chat Selected", "Please select a chat or create a new one before sending a message.")
+            QMessageBox.warning(self, "No Chat Selected",
+                                "Please select a chat or create a new one before sending a message.")
             return
 
         message = self.messageInput.toPlainText().strip()
@@ -519,7 +512,7 @@ class MainWindow(QMainWindow):
         # 4. Show a "thinking" message (but don't save it)
         #    We pass "thinking" as a role so it's not saved
         thinking_bubble = self._add_chat_message("thinking", "...")
-        QApplication.processEvents() # Force UI to update
+        QApplication.processEvents()  # Force UI to update
 
         # 5. Call the LLM service with the current message history
         try:
@@ -552,6 +545,7 @@ class MainWindow(QMainWindow):
             # Save the error message to the chat
             self._save_current_chat()
 
+
 ### Main execution block
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -579,4 +573,3 @@ if __name__ == "__main__":
     window = MainWindow(config_manager, key_manager, chat_history_manager)
     window.show()
     sys.exit(app.exec())
-
