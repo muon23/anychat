@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
     QTextEdit, QComboBox, QTreeWidget, QMenu, QMessageBox,
     QInputDialog, QTreeWidgetItem, QListWidget, QListWidgetItem,
-    QTreeWidgetItemIterator
+    QTreeWidgetItemIterator, QDialog
 )
 
 # We MUST import PathRole to use it
@@ -18,6 +18,7 @@ from config_manager import ConfigManager
 from key_manager import KeyManager
 from keys_dialog import KeysDialog
 from llm_service import LLMService
+from system_message_dialog import SystemMessageDialog
 
 
 class MainWindow(QMainWindow):
@@ -345,8 +346,12 @@ class MainWindow(QMainWindow):
                 last_message_content = last_message.get("content", "")
 
         # --- Populate the chat display ---
+        # Filter out system messages - they should not be displayed
         for message in messages_to_display:
             role = message.get("role", "user")
+            # Skip system messages in display
+            if role == "system":
+                continue
             content = message.get("content", "")
             model = message.get("model") if role == "assistant" else None
             self._add_chat_message(role, content, model)
@@ -383,7 +388,14 @@ class MainWindow(QMainWindow):
         if not self.chatDisplay:
             return
 
+        # Get system messages from current_messages (they're not displayed)
+        system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
+        
         messages_to_save = []
+        # Add system messages first (if any)
+        messages_to_save.extend(system_messages)
+        
+        # Add messages from widgets
         for i in range(self.chatDisplay.count()):
             item = self.chatDisplay.item(i)
             widget = self.chatDisplay.itemWidget(item)
@@ -424,6 +436,12 @@ class MainWindow(QMainWindow):
                 new_subproject_action = context_menu.addAction("New Subproject")
                 new_subproject_action.triggered.connect(lambda: self.handle_new_subproject(item))
 
+                context_menu.addSeparator()
+
+            elif item_path.is_file() and item_path.suffix == '.json':
+                # It's a chat file - add "Edit System Message" option
+                edit_system_action = context_menu.addAction("Edit System Message")
+                edit_system_action.triggered.connect(lambda: self.handle_edit_system_message(item))
                 context_menu.addSeparator()
 
             rename_action = context_menu.addAction("Rename")
@@ -519,6 +537,47 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error during delete: {e}")
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
+
+    def handle_edit_system_message(self, item: QTreeWidgetItem):
+        """Handles the 'Edit System Message' context menu action."""
+        try:
+            item_path = Path(item.data(0, PathRole))
+            if not item_path.is_file() or item_path.suffix != '.json':
+                return
+            
+            # Load the chat to get current system message
+            messages = self.chat_history_manager.load_chat(item_path)
+            system_message = ""
+            # Find system message (should be at the beginning)
+            for msg in messages:
+                if msg.get("role") == "system":
+                    system_message = msg.get("content", "")
+                    break
+            
+            # Open dialog
+            dialog = SystemMessageDialog(system_message, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                new_system_text = dialog.get_text()
+                
+                # Update or add system message
+                # Remove existing system messages
+                messages = [msg for msg in messages if msg.get("role") != "system"]
+                
+                # Add new system message at the beginning if not empty
+                if new_system_text:
+                    system_msg = {"role": "system", "content": new_system_text}
+                    messages.insert(0, system_msg)
+                
+                # Save the updated messages
+                self.chat_history_manager.save_chat(item_path, messages)
+                
+                # If this is the currently loaded chat, reload it
+                if self.current_chat_file_path == item_path:
+                    self._load_chat_from_file(item_path)
+                    
+        except Exception as e:
+            print(f"Error editing system message: {e}")
+            QMessageBox.warning(self, "Error", f"Could not edit system message: {e}")
 
     def handle_send_message(self):
         """Handles the 'Send' button click."""
