@@ -72,6 +72,10 @@ class MainWindow(QMainWindow):
         else:
             print("Warning: 'chatDisplay' (QListWidget) not found.")
 
+        # Initially disable messageInput until a chat is selected
+        if self.messageInput:
+            self.messageInput.setEnabled(False)
+
         # --- Connect UI Elements ---
         self._connect_signals()
 
@@ -291,6 +295,9 @@ class MainWindow(QMainWindow):
             self.current_chat_file_path = None
             self.current_messages = []  # Clear messages
             self._clear_chat_display()
+            # Disable messageInput when no chat is selected
+            if self.messageInput:
+                self.messageInput.setEnabled(False)
             return
 
         item_path_str = current.data(0, PathRole)
@@ -304,6 +311,9 @@ class MainWindow(QMainWindow):
             self.current_chat_file_path = None
             self.current_messages = []  # Clear messages
             self._clear_chat_display()
+            # Disable messageInput when a directory is selected
+            if self.messageInput:
+                self.messageInput.setEnabled(False)
 
         elif item_path.is_file() and item_path.suffix == '.json':
             # It's a chat file. Load it.
@@ -313,6 +323,10 @@ class MainWindow(QMainWindow):
     def _load_chat_from_file(self, file_path: Path):
         """Loads a chat from a file and populates the display."""
         self.current_chat_file_path = file_path
+
+        # Enable messageInput when a chat file is loaded
+        if self.messageInput:
+            self.messageInput.setEnabled(True)
 
         # Load messages *before* clearing display
         self.current_messages = self.chat_history_manager.load_chat(file_path)
