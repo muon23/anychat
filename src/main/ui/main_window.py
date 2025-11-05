@@ -247,9 +247,14 @@ class MainWindow(QMainWindow):
                 item.setExpanded(True)
             iterator += 1
 
-    def _add_chat_message(self, role: str, content: str) -> ChatMessageWidget | None:
+    def _add_chat_message(self, role: str, content: str, model: str = None) -> ChatMessageWidget | None:
         """
         Adds a new chat bubble widget to the chatDisplay (QListWidget).
+        
+        Args:
+            role: The message role ("user", "assistant", etc.)
+            content: The message content
+            model: Optional model name (only used for assistant messages)
         """
         if not self.chatDisplay:
             return None
@@ -259,7 +264,7 @@ class MainWindow(QMainWindow):
 
         chat_widget.editingFinished.connect(self._save_current_chat)
 
-        chat_widget.set_message(role, content, list_item)
+        chat_widget.set_message(role, content, list_item, model)
         self.chatDisplay.setItemWidget(list_item, chat_widget)
         self.chatDisplay.scrollToBottom()
 
@@ -329,10 +334,28 @@ class MainWindow(QMainWindow):
         for message in messages_to_display:
             role = message.get("role", "user")
             content = message.get("content", "")
-            self._add_chat_message(role, content)
+            model = message.get("model") if role == "assistant" else None
+            self._add_chat_message(role, content, model)
 
         if self.messageInput:
             self.messageInput.setPlainText(last_message_content)
+
+        # --- Set modelComboBox to the last assistant message's model (if any) ---
+        if self.modelComboBox:
+            last_assistant_model = None
+            # Find the last assistant message with a model
+            for message in reversed(self.current_messages):
+                if message.get("role") == "assistant" and "model" in message:
+                    last_assistant_model = message.get("model")
+                    break
+            
+            if last_assistant_model:
+                # Try to set the combo box to this model
+                index = self.modelComboBox.findText(last_assistant_model)
+                if index >= 0:
+                    self.modelComboBox.setCurrentIndex(index)
+                else:
+                    print(f"Warning: Model '{last_assistant_model}' from chat history not found in model list.")
 
         # After loading, update all bubble sizes
         self._on_chat_display_resize()
@@ -351,10 +374,11 @@ class MainWindow(QMainWindow):
             item = self.chatDisplay.item(i)
             widget = self.chatDisplay.itemWidget(item)
             if isinstance(widget, ChatMessageWidget):
-                role, content = widget.get_message_tuple()
                 # Do not save "thinking" messages
+                role = widget.role
                 if role in ("user", "assistant"):
-                    messages_to_save.append({"role": role, "content": content})
+                    # Use get_message_dict() to preserve model information
+                    messages_to_save.append(widget.get_message_dict())
 
         if self.messageInput:
             last_user_message = self.messageInput.toPlainText().strip()
@@ -526,7 +550,7 @@ class MainWindow(QMainWindow):
                     item = self.chatDisplay.item(i)
                     widget = self.chatDisplay.itemWidget(item)
                     if widget == thinking_bubble:
-                        widget.set_message("assistant", response_content, item)
+                        widget.set_message("assistant", response_content, item, model)
                         break
 
             # 7. Save the chat *again* with the new AI response
@@ -540,7 +564,7 @@ class MainWindow(QMainWindow):
                     item = self.chatDisplay.item(i)
                     widget = self.chatDisplay.itemWidget(item)
                     if widget == thinking_bubble:
-                        widget.set_message("assistant", error_message, item)
+                        widget.set_message("assistant", error_message, item, model)
                         break
             # Save the error message to the chat
             self._save_current_chat()

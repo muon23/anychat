@@ -28,6 +28,7 @@ class ChatMessageWidget(QWidget):
         self.ui.setupUi(self)
         self.list_item = None
         self.role = "user"
+        self.model = None  # Store the model name for assistant messages
 
         if self.ui.messageContent:
             self.ui.messageContent.installEventFilter(self)
@@ -38,12 +39,13 @@ class ChatMessageWidget(QWidget):
             self.editingFinished.emit()
         return super().eventFilter(obj, event)
 
-    def set_message(self, role: str, content: str, list_item: QListWidgetItem):
+    def set_message(self, role: str, content: str, list_item: QListWidgetItem, model: str = None):
         if not self.ui.messageContent:
             return
 
         self.list_item = list_item
         self.role = role
+        self.model = model if role == "assistant" else None  # Only store model for assistant messages
         self.ui.messageContent.setPlainText(content)
 
         if role == "user":
@@ -60,8 +62,12 @@ class ChatMessageWidget(QWidget):
             return self.ui.messageContent.toPlainText()
         return ""
 
-    def get_message_tuple(self) -> tuple:
-        return self.role, self.get_content()
+    def get_message_dict(self) -> dict:
+        """Returns the message as a dictionary with role, content, and optionally model."""
+        message = {"role": self.role, "content": self.get_content()}
+        if self.role == "assistant" and self.model:
+            message["model"] = self.model
+        return message
 
     def update_size(self):
         """
