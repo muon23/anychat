@@ -21,3 +21,8 @@ ddgs>=9.6.1
 # Data Validation
 pydantic>=2.12.0
 
+# Spell Checking
+# Note: Requires enchant library to be installed on the system
+# On macOS: brew install enchant
+# Then install Python bindings: pip install pyenchant
+pyenchant>=3.2.0

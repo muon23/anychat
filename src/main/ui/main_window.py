@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 
@@ -6,10 +7,11 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
-    QTextEdit, QComboBox, QTreeWidget, QMenu, QMessageBox,
+    QComboBox, QTreeWidget, QMenu, QMessageBox,
     QInputDialog, QTreeWidgetItem, QListWidget, QListWidgetItem,
-    QTreeWidgetItemIterator, QDialog
+    QTreeWidgetItemIterator, QDialog, QTextEdit, QLayout, QBoxLayout
 )
+from spell_check_text_edit import SpellCheckTextEdit
 
 # We MUST import PathRole to use it
 from chat_history_manager import ChatHistoryManager, PathRole
@@ -143,6 +145,10 @@ class MainWindow(QMainWindow):
             self.newChatButton = self.ui.newChatButton
             self.newProjectButton = self.ui.newProjectButton
 
+            # Replace messageInput with spell-checking version
+            if self.messageInput:
+                self._replace_with_spell_check(self.messageInput, "messageInput")
+
             if self.chatHistoryTree:
                 self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
@@ -161,6 +167,10 @@ class MainWindow(QMainWindow):
             loader = QUiLoader()
             loader.load(ui_file, self)
             self._find_ui_children_by_name()
+
+            # Replace messageInput with spell-checking version
+            if self.messageInput:
+                self._replace_with_spell_check(self.messageInput, "messageInput")
 
             if self.chatHistoryTree:
                 self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -201,6 +211,55 @@ class MainWindow(QMainWindow):
         if chat_splitter:
             chat_splitter.splitterMoved.connect(self._on_chat_display_resize)
             print("Chat splitter connected to resize.")
+
+    def _replace_with_spell_check(self, old_widget, object_name: str):
+        """Replace a QTextEdit widget with SpellCheckTextEdit."""
+        try:
+            from PySide6.QtWidgets import QTextEdit
+            if isinstance(old_widget, QTextEdit):
+                # Get parent and layout
+                parent = old_widget.parent()
+                layout = None
+                
+                # Find the layout that contains this widget
+                if parent:
+                    for child in parent.children():
+                        if isinstance(child, QLayout):
+                            idx = child.indexOf(old_widget)
+                            if idx >= 0:
+                                layout = child
+                                break
+                
+                if layout:
+                    # Get widget properties
+                    text = old_widget.toPlainText()
+                    placeholder = old_widget.placeholderText()
+                    max_height = old_widget.maximumHeight()
+                    
+                    # Create new spell-checking widget
+                    new_widget = SpellCheckTextEdit(parent)
+                    new_widget.setObjectName(object_name)
+                    new_widget.setPlainText(text)
+                    new_widget.setPlaceholderText(placeholder)
+                    new_widget.setMaximumHeight(max_height)
+                    new_widget.setAcceptRichText(old_widget.acceptRichText())
+                    
+                    # Replace in layout
+                    idx = layout.indexOf(old_widget)
+                    layout.removeWidget(old_widget)
+                    # insertWidget is only available on QBoxLayout (and subclasses like QVBoxLayout, QHBoxLayout)
+                    if isinstance(layout, QBoxLayout):
+                        layout.insertWidget(idx, new_widget)
+                    else:
+                        # For other layout types, just add the widget
+                        layout.addWidget(new_widget)
+                    old_widget.deleteLater()
+                    
+                    # Update reference
+                    self.messageInput = new_widget
+                    print(f"Replaced {object_name} with spell-checking version.")
+        except Exception as e:
+            print(f"Warning: Could not replace {object_name} with spell-checking version: {e}")
 
     def _populate_models(self):
         """Populates the modelComboBox with models from the ConfigManager."""
@@ -643,20 +702,50 @@ class MainWindow(QMainWindow):
             self._save_current_chat()
 
 
+def setup_logging(config_manager):
+    """Setup logging based on configuration."""
+    log_level_str = config_manager.get_log_level()
+    
+    # Map string level to logging constant
+    level_map = {
+        'debug': logging.DEBUG,
+        'info': logging.INFO,
+        'warning': logging.WARNING,
+        'error': logging.ERROR
+    }
+    log_level = level_map.get(log_level_str, logging.WARNING)
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Logging initialized at level: {log_level_str.upper()}")
+
+
 ### Main execution block
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
+    # Load configuration first (before setting up logging to avoid circular dependency)
+    # We'll use print here since logging isn't set up yet
     print("Loading configuration...")
     config_manager = ConfigManager()
+    
+    # Now set up logging based on config
+    setup_logging(config_manager)
+    logger = logging.getLogger(__name__)
 
     keys_file_str = config_manager.get_keys_file_path()
     chat_history_root_str = config_manager.get_chat_history_root()
     providers = config_manager.get_providers()
-    print(f"Properties file loaded: {config_manager.config_file}")
-    print(f"Keys file path: {keys_file_str}")
-    print(f"Chat history root: {chat_history_root_str}")
-    print(f"Providers: {providers}")
+    logger.info(f"Properties file loaded: {config_manager.config_file}")
+    logger.info(f"Keys file path: {keys_file_str}")
+    logger.info(f"Chat history root: {chat_history_root_str}")
+    logger.info(f"Providers: {providers}")
 
     keys_file_path = Path(keys_file_str)
     chat_history_path = Path(chat_history_root_str)
@@ -669,8 +758,8 @@ if __name__ == "__main__":
         # Check if keys_file is within chat_history_root
         keys_file_relative = keys_file_resolved.relative_to(chat_history_resolved)
         # If we get here without exception, keys_file is inside chat_history_root
-        print(f"ERROR: keys_file ({keys_file_resolved}) is inside chat_history_root ({chat_history_resolved})")
-        print("This is not allowed for security reasons. Please configure keys_file outside of chat_history_root.")
+        logger.error(f"keys_file ({keys_file_resolved}) is inside chat_history_root ({chat_history_resolved})")
+        logger.error("This is not allowed for security reasons. Please configure keys_file outside of chat_history_root.")
         sys.exit(1)
     except ValueError:
         # ValueError means keys_file is NOT inside chat_history_root, which is good
@@ -678,10 +767,10 @@ if __name__ == "__main__":
 
     key_manager = KeyManager(keys_file_path, providers)
     chat_history_path.mkdir(parents=True, exist_ok=True)
-    print(f"Chat history root initialized at: {chat_history_path.resolve()}")
+    logger.info(f"Chat history root initialized at: {chat_history_path.resolve()}")
     chat_history_manager = ChatHistoryManager(chat_history_path)
 
-    print("Managers injected into MainWindow.")
+    logger.info("Managers injected into MainWindow.")
     window = MainWindow(config_manager, key_manager, chat_history_manager)
     window.show()
     sys.exit(app.exec())

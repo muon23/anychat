@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt, QSize, Signal, QEvent
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QWidget, QListWidgetItem
+from PySide6.QtWidgets import QWidget, QListWidgetItem, QTextEdit
+from spell_check_text_edit import SpellCheckTextEdit
 
 # Import the compiled UI class
 try:
@@ -30,8 +31,45 @@ class ChatMessageWidget(QWidget):
         self.role = "user"
         self.model = None  # Store the model name for assistant messages
 
+        # Replace messageContent with spell-checking version if it's a QTextEdit
+        if self.ui.messageContent and isinstance(self.ui.messageContent, QTextEdit):
+            self._replace_message_content_with_spell_check()
+
         if self.ui.messageContent:
             self.ui.messageContent.installEventFilter(self)
+    
+    def _replace_message_content_with_spell_check(self):
+        """Replace messageContent QTextEdit with SpellCheckTextEdit."""
+        try:
+            old_widget = self.ui.messageContent
+            layout = self.ui.mainLayout
+            
+            # Get widget properties
+            text = old_widget.toPlainText()
+            object_name = old_widget.objectName()
+            size_policy = old_widget.sizePolicy()
+            vertical_scroll = old_widget.verticalScrollBarPolicy()
+            horizontal_scroll = old_widget.horizontalScrollBarPolicy()
+            
+            # Create new spell-checking widget
+            new_widget = SpellCheckTextEdit(self)
+            new_widget.setObjectName(object_name)
+            new_widget.setPlainText(text)
+            new_widget.setSizePolicy(size_policy)
+            new_widget.setVerticalScrollBarPolicy(vertical_scroll)
+            new_widget.setHorizontalScrollBarPolicy(horizontal_scroll)
+            new_widget.setAcceptRichText(old_widget.acceptRichText())
+            
+            # Replace in layout
+            idx = layout.indexOf(old_widget)
+            layout.removeWidget(old_widget)
+            layout.insertWidget(idx, new_widget)
+            old_widget.deleteLater()
+            
+            # Update reference
+            self.ui.messageContent = new_widget
+        except Exception as e:
+            print(f"Warning: Could not replace messageContent with spell-checking version: {e}")
 
     def eventFilter(self, obj, event: QEvent):
         if obj == self.ui.messageContent and event.type() == QEvent.Type.FocusOut:

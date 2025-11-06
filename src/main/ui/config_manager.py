@@ -140,3 +140,15 @@ class ConfigManager:
             except Exception as e:
                 print(f"Error reading invocation arguments: {e}")
         return args
+
+    def get_log_level(self) -> str:
+        """
+        Returns the log level from the [General] section.
+        Defaults to 'warning' if not specified or invalid.
+        Valid values: debug, info, warning, error
+        """
+        level = self.config.get('General', 'logging', fallback='warning').lower()
+        valid_levels = ['debug', 'info', 'warning', 'error']
+        if level in valid_levels:
+            return level
+        return 'warning'

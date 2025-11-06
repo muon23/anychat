@@ -1,8 +1,9 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox,
+    QDialog, QVBoxLayout, QDialogButtonBox,
     QSizePolicy
 )
+from spell_check_text_edit import SpellCheckTextEdit
 
 
 class SystemMessageDialog(QDialog):
@@ -16,11 +17,11 @@ class SystemMessageDialog(QDialog):
         # Create layout
         layout = QVBoxLayout(self)
         
-        # Create text edit with word wrapping
-        self.text_edit = QTextEdit(self)
+        # Create text edit with word wrapping and spell checking
+        self.text_edit = SpellCheckTextEdit(self)
         self.text_edit.setPlainText(current_system_message)
         self.text_edit.setAcceptRichText(False)
-        self.text_edit.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.text_edit.setLineWrapMode(SpellCheckTextEdit.LineWrapMode.WidgetWidth)
         self.text_edit.setPlaceholderText("Enter system message (instructions for the assistant)...")
         
         # Create button box with Save and Cancel
