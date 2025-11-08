@@ -22,7 +22,8 @@ class DeepInfraLlm(Llm):
         "microsoft/WizardLM-2-8x22B": {"aliases": ["wizard-2"], "token_limit": 65_536},
         "deepseek-ai/DeepSeek-V3.1": {"aliases": ["deepseek-v3.1"], "token_limit": 163_840, "web_search": True},
         # "meta-llama/Llama-4-Maverick-17B-128E-Instruct-Turbo": {"aliases": ["llama-4"], "web_search": True}
-        "meta-llama/Llama-4-Scout-17B-16E-Instruct": {"aliases": ["llama-4"], "web_search": True}
+        "meta-llama/Llama-4-Scout-17B-16E-Instruct": {"aliases": ["llama-4"], "web_search": True},
+        "moonshotai/Kimi-K2-Instruct-0905": {"aliases": ["kimi-k2"], "token_limit": 262_144, "web_search": True}
     }
 
     SUPPORTED_MODELS = list(__MODELS.keys())

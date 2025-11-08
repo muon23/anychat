@@ -16,10 +16,11 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QFrame,
-    QHBoxLayout, QHeaderView, QLineEdit, QListWidget,
-    QListWidgetItem, QMainWindow, QMenuBar, QPushButton,
-    QSizePolicy, QSplitter, QStatusBar, QTextEdit,
-    QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+    QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+    QListWidget, QListWidgetItem, QMainWindow, QMenuBar,
+    QPushButton, QSizePolicy, QSpacerItem, QSplitter,
+    QStatusBar, QTextEdit, QTreeWidget, QTreeWidgetItem,
+    QVBoxLayout, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -49,21 +50,6 @@ class Ui_MainWindow(object):
 
         self.leftPanelLayout.addWidget(self.searchBar)
 
-        self.newButtonsLayout = QHBoxLayout()
-        self.newButtonsLayout.setObjectName(u"newButtonsLayout")
-        self.newChatButton = QPushButton(self.leftPanelWidget)
-        self.newChatButton.setObjectName(u"newChatButton")
-
-        self.newButtonsLayout.addWidget(self.newChatButton)
-
-        self.newProjectButton = QPushButton(self.leftPanelWidget)
-        self.newProjectButton.setObjectName(u"newProjectButton")
-
-        self.newButtonsLayout.addWidget(self.newProjectButton)
-
-
-        self.leftPanelLayout.addLayout(self.newButtonsLayout)
-
         self.line = QFrame(self.leftPanelWidget)
         self.line.setObjectName(u"line")
         self.line.setFrameShape(QFrame.Shape.HLine)
@@ -71,12 +57,82 @@ class Ui_MainWindow(object):
 
         self.leftPanelLayout.addWidget(self.line)
 
-        self.chatHistoryTree = QTreeWidget(self.leftPanelWidget)
-        self.chatHistoryTree.setObjectName(u"chatHistoryTree")
-        self.chatHistoryTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.chatHistoryTree.setHeaderHidden(True)
+        self.leftSplitter = QSplitter(self.leftPanelWidget)
+        self.leftSplitter.setObjectName(u"leftSplitter")
+        self.leftSplitter.setOrientation(Qt.Orientation.Vertical)
+        self.projectsSection = QWidget(self.leftSplitter)
+        self.projectsSection.setObjectName(u"projectsSection")
+        self.projectsSectionLayout = QVBoxLayout(self.projectsSection)
+        self.projectsSectionLayout.setSpacing(4)
+        self.projectsSectionLayout.setObjectName(u"projectsSectionLayout")
+        self.projectsSectionLayout.setContentsMargins(0, 0, 0, 0)
+        self.projectsHeaderLayout = QHBoxLayout()
+        self.projectsHeaderLayout.setSpacing(4)
+        self.projectsHeaderLayout.setObjectName(u"projectsHeaderLayout")
+        self.projectsHeaderLayout.setContentsMargins(0, 0, 0, 0)
+        self.projectsLabel = QLabel(self.projectsSection)
+        self.projectsLabel.setObjectName(u"projectsLabel")
 
-        self.leftPanelLayout.addWidget(self.chatHistoryTree)
+        self.projectsHeaderLayout.addWidget(self.projectsLabel)
+
+        self.projectsHeaderSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.projectsHeaderLayout.addItem(self.projectsHeaderSpacer)
+
+        self.newProjectButton = QPushButton(self.projectsSection)
+        self.newProjectButton.setObjectName(u"newProjectButton")
+        self.newProjectButton.setMaximumSize(QSize(24, 24))
+
+        self.projectsHeaderLayout.addWidget(self.newProjectButton)
+
+
+        self.projectsSectionLayout.addLayout(self.projectsHeaderLayout)
+
+        self.projectsTree = QTreeWidget(self.projectsSection)
+        self.projectsTree.setObjectName(u"projectsTree")
+        self.projectsTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.projectsTree.setHeaderHidden(True)
+
+        self.projectsSectionLayout.addWidget(self.projectsTree)
+
+        self.leftSplitter.addWidget(self.projectsSection)
+        self.chatsSection = QWidget(self.leftSplitter)
+        self.chatsSection.setObjectName(u"chatsSection")
+        self.chatsSectionLayout = QVBoxLayout(self.chatsSection)
+        self.chatsSectionLayout.setSpacing(4)
+        self.chatsSectionLayout.setObjectName(u"chatsSectionLayout")
+        self.chatsSectionLayout.setContentsMargins(0, 0, 0, 0)
+        self.chatsHeaderLayout = QHBoxLayout()
+        self.chatsHeaderLayout.setSpacing(4)
+        self.chatsHeaderLayout.setObjectName(u"chatsHeaderLayout")
+        self.chatsHeaderLayout.setContentsMargins(0, 0, 0, 0)
+        self.chatsLabel = QLabel(self.chatsSection)
+        self.chatsLabel.setObjectName(u"chatsLabel")
+
+        self.chatsHeaderLayout.addWidget(self.chatsLabel)
+
+        self.chatsHeaderSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.chatsHeaderLayout.addItem(self.chatsHeaderSpacer)
+
+        self.newChatButton = QPushButton(self.chatsSection)
+        self.newChatButton.setObjectName(u"newChatButton")
+        self.newChatButton.setMaximumSize(QSize(24, 24))
+
+        self.chatsHeaderLayout.addWidget(self.newChatButton)
+
+
+        self.chatsSectionLayout.addLayout(self.chatsHeaderLayout)
+
+        self.chatsList = QListWidget(self.chatsSection)
+        self.chatsList.setObjectName(u"chatsList")
+        self.chatsList.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+        self.chatsSectionLayout.addWidget(self.chatsList)
+
+        self.leftSplitter.addWidget(self.chatsSection)
+
+        self.leftPanelLayout.addWidget(self.leftSplitter)
 
         self.mainSplitter.addWidget(self.leftPanelWidget)
         self.rightPanelWidget = QWidget(self.mainSplitter)
@@ -149,10 +205,12 @@ class Ui_MainWindow(object):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"AnyChat", None))
         self.keysButton.setText(QCoreApplication.translate("MainWindow", u"Keys", None))
         self.searchBar.setPlaceholderText(QCoreApplication.translate("MainWindow", u"Search chats...", None))
-        self.newChatButton.setText(QCoreApplication.translate("MainWindow", u"New Chat", None))
-        self.newProjectButton.setText(QCoreApplication.translate("MainWindow", u"New Project", None))
-        ___qtreewidgetitem = self.chatHistoryTree.headerItem()
-        ___qtreewidgetitem.setText(0, QCoreApplication.translate("MainWindow", u"Chat History", None));
+        self.projectsLabel.setText(QCoreApplication.translate("MainWindow", u"Projects", None))
+        self.newProjectButton.setText(QCoreApplication.translate("MainWindow", u"+", None))
+        ___qtreewidgetitem = self.projectsTree.headerItem()
+        ___qtreewidgetitem.setText(0, QCoreApplication.translate("MainWindow", u"Projects", None));
+        self.chatsLabel.setText(QCoreApplication.translate("MainWindow", u"Chats", None))
+        self.newChatButton.setText(QCoreApplication.translate("MainWindow", u"+", None))
         self.messageInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"Ask anything...", None))
         self.sendButton.setText(QCoreApplication.translate("MainWindow", u"Send", None))
     # retranslateUi

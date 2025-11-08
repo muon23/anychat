@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QStyle, QApplication, QMessageBox
+from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QStyle, QApplication, QMessageBox, QListWidget, QListWidgetItem
 
 # This custom data role is the key. We'll store the full file path
 # in each tree item under this role.
@@ -67,7 +67,7 @@ class ChatHistoryManager:
             print(f"Error reading directory {parent_dir}: {e}")
 
     def load_history(self, tree_widget: QTreeWidget):
-        """Clears and reloads the entire chat history into the QTreeWidget."""
+        """Clears and reloads the entire chat history into the QTreeWidget. (Deprecated - use load_projects and load_top_level_chats)"""
         tree_widget.clear()
         icons = self._get_icons()
         tree_widget.setHeaderHidden(True)  # Hide the "1" header
@@ -90,6 +90,47 @@ class ChatHistoryManager:
         except OSError as e:
             print(f"Error reading history root {self.history_root}: {e}")
         print("Chat history loaded into tree.")
+    
+    def load_projects(self, tree_widget: QTreeWidget):
+        """Loads only project directories into the QTreeWidget."""
+        tree_widget.clear()
+        icons = self._get_icons()
+        tree_widget.setHeaderHidden(True)
+
+        try:
+            for name in sorted(os.listdir(self.history_root)):
+                name = str(name)
+                path = self.history_root / name
+
+                item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+
+                if path.is_dir():
+                    project_item = self._create_folder_item(tree_widget, name, path, icons, item_flags)
+                    self._load_recursive(path, project_item, icons)
+        except OSError as e:
+            print(f"Error reading history root {self.history_root}: {e}")
+        print("Projects loaded into tree.")
+    
+    def load_top_level_chats(self, list_widget: QListWidget):
+        """Loads only top-level chat files into the QListWidget."""
+        list_widget.clear()
+        icons = self._get_icons()
+
+        try:
+            for name in sorted(os.listdir(self.history_root)):
+                name = str(name)
+                path = self.history_root / name
+
+                if path.is_file() and path.suffix == '.json':
+                    display_name = name.replace('.json', '')
+                    list_item = QListWidgetItem(display_name)
+                    list_item.setIcon(icons["file"])
+                    list_item.setData(PathRole, str(path))
+                    list_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                    list_widget.addItem(list_item)
+        except OSError as e:
+            print(f"Error reading history root {self.history_root}: {e}")
+        print("Top-level chats loaded into list.")
 
     def create_new_chat(self, tree_widget: QTreeWidget, parent_project_item: QTreeWidgetItem = None):
         """Creates a new 'Chat N' file in the specified project or root."""
@@ -118,7 +159,7 @@ class ChatHistoryManager:
             chat_item = QTreeWidgetItem(parent_node, [chat_name])
             chat_item.setIcon(0, self._get_icons()["file"])
             chat_item.setData(0, PathRole, str(new_chat_path))
-            item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
             chat_item.setFlags(item_flags)
             chat_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
 
@@ -127,6 +168,34 @@ class ChatHistoryManager:
 
             tree_widget.setCurrentItem(chat_item)
             return chat_item
+        except OSError as e:
+            print(f"Error creating new chat file: {e}")
+            return None
+    
+    def create_new_chat_in_list(self, list_widget: QListWidget, parent_dir: Path):
+        """Creates a new 'Chat N' file in the root directory and adds it to the list."""
+        # Find the next available "Chat N" number
+        i = 1
+        while True:
+            chat_name = f"Chat {i}"
+            new_chat_path = parent_dir / f"{chat_name}.json"
+            if not new_chat_path.exists():
+                break
+            i += 1
+
+        try:
+            # Create the empty chat file with an empty list
+            with open(new_chat_path, 'w', encoding='utf-8') as f:
+                json.dump([], f)
+
+            # Add the new chat to the list
+            list_item = QListWidgetItem(chat_name)
+            list_item.setIcon(self._get_icons()["file"])
+            list_item.setData(PathRole, str(new_chat_path))
+            list_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            list_widget.addItem(list_item)
+            list_widget.setCurrentItem(list_item)
+            return list_item
         except OSError as e:
             print(f"Error creating new chat file: {e}")
             return None
@@ -154,7 +223,7 @@ class ChatHistoryManager:
             project_item = QTreeWidgetItem(parent_node, [project_name])
             project_item.setIcon(0, self._get_icons()["folder"])
             project_item.setData(0, PathRole, str(new_project_path))
-            item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDropEnabled)
+            item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDropEnabled | Qt.ItemFlag.ItemIsEditable)
             project_item.setFlags(item_flags)
             project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
 

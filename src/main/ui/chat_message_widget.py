@@ -43,6 +43,7 @@ class ChatMessageWidget(QWidget):
         self.role = "user"
         self.model = None  # Store the model name for assistant messages
         self._is_deleted = False  # Flag to track if widget is being deleted
+        self._regenerate_handler = None  # Store the current regenerate button handler
         
         # Create button container and buttons
         self._create_action_buttons()
@@ -398,12 +399,15 @@ class ChatMessageWidget(QWidget):
             self.cut_button.setVisible(False)
             # Update container size for assistant (1 button)
             self.button_container.setFixedSize(24, 24)
-            # Disconnect any user regenerate handler and connect assistant handler
-            try:
-                self.regenerate_button.clicked.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            self.regenerate_button.clicked.connect(self.regenerateRequested.emit)
+            # Disconnect any existing handler and connect assistant handler
+            if self._regenerate_handler is not None:
+                try:
+                    self.regenerate_button.clicked.disconnect(self._regenerate_handler)
+                except (RuntimeError, TypeError, AttributeError):
+                    pass
+            # Store and connect the new handler
+            self._regenerate_handler = self.regenerateRequested.emit
+            self.regenerate_button.clicked.connect(self._regenerate_handler)
         elif role == "user":
             self.fork_button.setVisible(True)
             self.regenerate_button.setVisible(True)
@@ -411,12 +415,15 @@ class ChatMessageWidget(QWidget):
             self.cut_button.setVisible(True)
             # Update container size for user (4 buttons)
             self.button_container.setFixedSize(102, 24)
-            # Disconnect any assistant regenerate handler and connect user handler
-            try:
-                self.regenerate_button.clicked.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            self.regenerate_button.clicked.connect(self._on_regenerate_user_clicked)
+            # Disconnect any existing handler and connect user handler
+            if self._regenerate_handler is not None:
+                try:
+                    self.regenerate_button.clicked.disconnect(self._regenerate_handler)
+                except (RuntimeError, TypeError, AttributeError):
+                    pass
+            # Store and connect the new handler
+            self._regenerate_handler = self._on_regenerate_user_clicked
+            self.regenerate_button.clicked.connect(self._regenerate_handler)
         else:
             # For thinking or other roles, hide all buttons
             self.fork_button.setVisible(False)
