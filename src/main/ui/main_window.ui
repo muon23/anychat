@@ -1,178 +1,186 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
-    <class>MainWindow</class>
-    <widget class="QMainWindow" name="MainWindow">
-        <property name="geometry">
-            <rect>
-                <x>0</x>
-                <y>0</y>
-                <width>1134</width>
-                <height>747</height>
-            </rect>
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1134</width>
+    <height>747</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>AnyChat</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QSplitter" name="mainSplitter">
+      <property name="orientation">
+       <enum>Qt::Orientation::Horizontal</enum>
+      </property>
+      <widget class="QWidget" name="leftPanelWidget" native="true">
+       <layout class="QVBoxLayout" name="leftPanelLayout">
+        <property name="spacing">
+         <number>6</number>
         </property>
-        <property name="windowTitle">
-            <string>AnyChat</string>
+        <property name="leftMargin">
+         <number>0</number>
         </property>
-        <widget class="QWidget" name="centralwidget">
-            <layout class="QVBoxLayout" name="verticalLayout">
-                <item>
-                    <widget class="QSplitter" name="mainSplitter">
-                        <property name="orientation">
-                            <enum>Qt::Orientation::Horizontal</enum>
-                        </property>
-                        <widget class="QWidget" name="leftPanelWidget" native="true">
-                            <layout class="QVBoxLayout" name="leftPanelLayout">
-                                <property name="spacing">
-                                    <number>6</number>
-                                </property>
-                                <property name="leftMargin">
-                                    <number>0</number>
-                                </property>
-                                <property name="topMargin">
-                                    <number>0</number>
-                                </property>
-                                <property name="rightMargin">
-                                    <number>0</number>
-                                </property>
-                                <property name="bottomMargin">
-                                    <number>0</number>
-                                </property>
-                                <item>
-                                    <widget class="QPushButton" name="keysButton">
-                                        <property name="text">
-                                            <string>Keys</string>
-                                        </property>
-                                    </widget>
-                                </item>
-                                <item>
-                                    <widget class="QLineEdit" name="searchBar">
-                                        <property name="placeholderText">
-                                            <string>Search chats...</string>
-                                        </property>
-                                    </widget>
-                                </item>
-                                <item>
-                                    <layout class="QHBoxLayout" name="newButtonsLayout">
-                                        <item>
-                                            <widget class="QPushButton" name="newChatButton">
-                                                <property name="text">
-                                                    <string>New Chat</string>
-                                                </property>
-                                            </widget>
-                                        </item>
-                                        <item>
-                                            <widget class="QPushButton" name="newProjectButton">
-                                                <property name="text">
-                                                    <string>New Project</string>
-                                                </property>
-                                            </widget>
-                                        </item>
-                                    </layout>
-                                </item>
-                                <item>
-                                    <widget class="Line" name="line">
-                                        <property name="orientation">
-                                            <enum>Qt::Orientation::Horizontal</enum>
-                                        </property>
-                                    </widget>
-                                </item>
-                                <item>
-                                    <widget class="QTreeWidget" name="chatHistoryTree">
-                                        <property name="contextMenuPolicy">
-                                            <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
-                                        </property>
-                                        <property name="headerHidden">
-                                            <bool>true</bool>
-                                        </property>
-                                        <column>
-                                            <property name="text">
-                                                <string>Chat History</string>
-                                            </property>
-                                        </column>
-                                    </widget>
-                                </item>
-                            </layout>
-                        </widget>
-                        <widget class="QWidget" name="rightPanelWidget" native="true">
-                            <layout class="QVBoxLayout" name="rightPanelLayout">
-                                <property name="leftMargin">
-                                    <number>0</number>
-                                </property>
-                                <property name="topMargin">
-                                    <number>0</number>
-                                </property>
-                                <property name="rightMargin">
-                                    <number>0</number>
-                                </property>
-                                <property name="bottomMargin">
-                                    <number>0</number>
-                                </property>
-                                <item>
-                                    <widget class="QSplitter" name="chatAreaSplitter">
-                                        <property name="orientation">
-                                            <enum>Qt::Orientation::Vertical</enum>
-                                        </property>
-                                        <widget class="QListWidget" name="chatDisplay">
-                                            <property name="frameShape">
-                                                <enum>QFrame::NoFrame</enum>
-                                            </property>
-                                            <property name="selectionMode">
-                                                <enum>QAbstractItemView::NoSelection</enum>
-                                            </property>
-                                            <property name="spacing">
-                                                <number>5</number>
-                                            </property>
-                                        </widget>
-                                        <widget class="QWidget" name="inputContainer" native="true">
-                                            <layout class="QVBoxLayout" name="inputContainerLayout">
-                                                <item>
-                                                    <widget class="QTextEdit" name="messageInput">
-                                                        <property name="maximumSize">
-                                                            <size>
-                                                                <width>16777215</width>
-                                                                <height>120</height>
-                                                            </size>
-                                                        </property>
-                                                        <property name="placeholderText">
-                                                            <string>Ask anything...</string>
-                                                        </property>
-                                                    </widget>
-                                                </item>
-                                                <item>
-                                                    <layout class="QHBoxLayout" name="bottomControlsLayout">
-                                                        <item>
-                                                            <widget class="QComboBox" name="modelComboBox">
-                                                                <property name="sizePolicy">
-                                                                    <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-                                                                        <horstretch>1</horstretch>
-                                                                        <verstretch>0</verstretch>
-                                                                    </sizepolicy>
-                                                                </property>
-                                                            </widget>
-                                                        </item>
-                                                        <item>
-                                                            <widget class="QPushButton" name="sendButton">
-                                                                <property name="text">
-                                                                    <string>Send</string>
-                                                                </property>
-                                                            </widget>
-                                                        </item>
-                                                    </layout>
-                                                </item>
-                                            </layout>
-                                        </widget>
-                                    </widget>
-                                </item>
-                            </layout>
-                        </widget>
-                    </widget>
-                </item>
-            </layout>
-        </widget>
-        <widget class="QMenuBar" name="menubar"/>
-        <widget class="QStatusBar" name="statusbar"/>
-    </widget>
-    <resources/>
-    <connections/>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QPushButton" name="keysButton">
+          <property name="text">
+           <string>Keys</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="searchBar">
+          <property name="placeholderText">
+           <string>Search chats...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="newButtonsLayout">
+          <item>
+           <widget class="QPushButton" name="newChatButton">
+            <property name="text">
+             <string>New Chat</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="newProjectButton">
+            <property name="text">
+             <string>New Project</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="Line" name="line">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTreeWidget" name="chatHistoryTree">
+          <property name="contextMenuPolicy">
+           <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
+          </property>
+          <property name="headerHidden">
+           <bool>true</bool>
+          </property>
+          <column>
+           <property name="text">
+            <string>Chat History</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="rightPanelWidget" native="true">
+       <layout class="QVBoxLayout" name="rightPanelLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QSplitter" name="chatAreaSplitter">
+          <property name="orientation">
+           <enum>Qt::Orientation::Vertical</enum>
+          </property>
+          <widget class="QListWidget" name="chatDisplay">
+           <property name="frameShape">
+            <enum>QFrame::Shape::NoFrame</enum>
+           </property>
+           <property name="selectionMode">
+            <enum>QAbstractItemView::SelectionMode::NoSelection</enum>
+           </property>
+           <property name="spacing">
+            <number>5</number>
+           </property>
+          </widget>
+          <widget class="QWidget" name="inputContainer" native="true">
+           <layout class="QVBoxLayout" name="inputContainerLayout">
+            <item>
+             <widget class="QTextEdit" name="messageInput">
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>120</height>
+               </size>
+              </property>
+              <property name="placeholderText">
+               <string>Ask anything...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="bottomControlsLayout">
+              <item>
+               <widget class="QComboBox" name="modelComboBox">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>1</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="sendButton">
+                <property name="text">
+                 <string>Send</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1134</width>
+     <height>37</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
 </ui>
-

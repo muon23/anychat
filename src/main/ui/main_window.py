@@ -330,7 +330,10 @@ class MainWindow(QMainWindow):
         # Connect action button signals using a slot that finds the widget by sender
         # This avoids capturing widget references that might become invalid
         chat_widget.cutRequested.connect(self._on_cut_requested)
+        chat_widget.cutPairRequested.connect(self._on_cut_pair_requested)
+        chat_widget.cutBelowRequested.connect(self._on_cut_below_requested)
         chat_widget.regenerateRequested.connect(self._on_regenerate_requested)
+        chat_widget.regenerateUserRequested.connect(self._on_regenerate_user_requested)
 
         chat_widget.set_message(role, content, list_item, model)
         self.chatDisplay.setItemWidget(list_item, chat_widget)
@@ -925,6 +928,271 @@ class MainWindow(QMainWindow):
                 self._handle_regenerate_message(sender)
         except (RuntimeError, AttributeError):
             # Widget was deleted
+            return
+    
+    def _handle_cut_pair(self, widget: ChatMessageWidget):
+        """Handle cut pair: remove user message and next assistant message."""
+        try:
+            if not widget or widget.role != "user":
+                return
+            
+            try:
+                list_item = widget.list_item
+                if not list_item:
+                    return
+            except (RuntimeError, AttributeError):
+                return
+            
+            list_widget = list_item.listWidget()
+            if not list_widget:
+                return
+            
+            user_index = list_widget.row(list_item)
+            if user_index < 0:
+                return
+            
+            # Find the next assistant message
+            assistant_item = None
+            assistant_index = -1
+            for i in range(user_index + 1, list_widget.count()):
+                item = list_widget.item(i)
+                if item:
+                    item_widget = list_widget.itemWidget(item)
+                    if isinstance(item_widget, ChatMessageWidget):
+                        if item_widget.role == "assistant":
+                            assistant_item = item
+                            assistant_index = i
+                            break
+            
+            # Remove both messages (start from higher index to avoid index shifting)
+            if assistant_index >= 0:
+                # Remove assistant message first
+                self._remove_message_at_index(list_widget, assistant_index)
+            
+            # Remove user message
+            self._remove_message_at_index(list_widget, user_index)
+            
+            # Save the chat
+            self._save_current_chat()
+        except Exception as e:
+            print(f"Error in _handle_cut_pair: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _handle_cut_below(self, widget: ChatMessageWidget):
+        """Handle cut below: remove this message and all messages below it."""
+        try:
+            if not widget:
+                return
+            
+            try:
+                list_item = widget.list_item
+                if not list_item:
+                    return
+            except (RuntimeError, AttributeError):
+                return
+            
+            list_widget = list_item.listWidget()
+            if not list_widget:
+                return
+            
+            start_index = list_widget.row(list_item)
+            if start_index < 0:
+                return
+            
+            # Remove all messages from start_index to the end
+            # Remove from end to start to avoid index shifting
+            count = list_widget.count()
+            for i in range(count - 1, start_index - 1, -1):
+                self._remove_message_at_index(list_widget, i)
+            
+            # Save the chat
+            self._save_current_chat()
+        except Exception as e:
+            print(f"Error in _handle_cut_below: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _handle_regenerate_user_message(self, widget: ChatMessageWidget):
+        """Handle regenerate for user message: regenerate the next assistant message."""
+        try:
+            if not widget or widget.role != "user":
+                return
+            
+            try:
+                list_item = widget.list_item
+                if not list_item:
+                    return
+            except (RuntimeError, AttributeError):
+                return
+            
+            list_widget = list_item.listWidget()
+            if not list_widget:
+                return
+            
+            user_index = list_widget.row(list_item)
+            if user_index < 0:
+                return
+            
+            # Find the next assistant message
+            assistant_item = None
+            assistant_index = -1
+            assistant_widget = None
+            for i in range(user_index + 1, list_widget.count()):
+                item = list_widget.item(i)
+                if item:
+                    item_widget = list_widget.itemWidget(item)
+                    if isinstance(item_widget, ChatMessageWidget):
+                        if item_widget.role == "assistant":
+                            assistant_item = item
+                            assistant_index = i
+                            assistant_widget = item_widget
+                            break
+            
+            if assistant_index < 0 or not assistant_widget:
+                # No assistant message found, can't regenerate
+                return
+            
+            # Get the model to use
+            try:
+                model = assistant_widget.model if assistant_widget.model else self.modelComboBox.currentText()
+            except (RuntimeError, AttributeError):
+                model = self.modelComboBox.currentText()
+            
+            # Build message history up to and including the user message
+            messages_before = []
+            
+            # Get system messages first
+            system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
+            messages_before.extend(system_messages)
+            
+            # Get all displayed messages up to and including the user message
+            for i in range(user_index + 1):
+                item = list_widget.item(i)
+                if item:
+                    item_widget = list_widget.itemWidget(item)
+                    if isinstance(item_widget, ChatMessageWidget):
+                        role = item_widget.role
+                        if role in ("user", "assistant"):
+                            try:
+                                messages_before.append(item_widget.get_message_dict())
+                            except (RuntimeError, AttributeError):
+                                continue
+            
+            # Show "thinking" state in the assistant bubble
+            try:
+                assistant_widget.set_message("thinking", "...", assistant_item)
+                QApplication.processEvents()
+            except (RuntimeError, AttributeError):
+                return
+            
+            # Call LLM with messages including the user message
+            try:
+                response_content = self.llm_service.get_response(model, messages_before)
+                
+                # Replace the assistant message with the new response
+                try:
+                    assistant_widget.set_message("assistant", response_content, assistant_item, model)
+                    # Ensure editingFinished is connected
+                    try:
+                        assistant_widget.editingFinished.disconnect()
+                    except (RuntimeError, TypeError):
+                        pass
+                    assistant_widget.editingFinished.connect(self._save_current_chat)
+                    
+                    # Scroll to the item
+                    list_widget.scrollToItem(assistant_item)
+                    QApplication.processEvents()
+                    
+                    # Save the chat
+                    self._save_current_chat()
+                except (RuntimeError, AttributeError) as e:
+                    print(f"Error updating widget: {e}")
+                    return
+                
+            except Exception as e:
+                error_message = f"Error: {e}"
+                try:
+                    assistant_widget.set_message("assistant", error_message, assistant_item, model)
+                    list_widget.scrollToItem(assistant_item)
+                    QApplication.processEvents()
+                    self._save_current_chat()
+                except (RuntimeError, AttributeError):
+                    pass
+        except Exception as e:
+            print(f"Error in _handle_regenerate_user_message: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _remove_message_at_index(self, list_widget, index: int):
+        """Helper method to safely remove a message at a given index."""
+        try:
+            item = list_widget.item(index)
+            if not item:
+                return
+            
+            widget = list_widget.itemWidget(item)
+            if isinstance(widget, ChatMessageWidget):
+                # Disconnect all signals
+                try:
+                    widget.editingFinished.disconnect()
+                    widget.cutRequested.disconnect()
+                    widget.cutPairRequested.disconnect()
+                    widget.cutBelowRequested.disconnect()
+                    widget.regenerateRequested.disconnect()
+                    widget.regenerateUserRequested.disconnect()
+                except (RuntimeError, TypeError, AttributeError):
+                    pass
+                
+                # Mark as deleted
+                try:
+                    widget._is_deleted = True
+                    widget.setParent(None)
+                    widget.list_item = None
+                except (RuntimeError, AttributeError):
+                    pass
+            
+            # Remove widget from item
+            list_widget.removeItemWidget(item)
+            
+            # Take the item
+            removed_item = list_widget.takeItem(index)
+            if removed_item:
+                del removed_item
+        except Exception as e:
+            print(f"Error removing message at index {index}: {e}")
+    
+    def _on_cut_pair_requested(self):
+        """Slot for cutPairRequested signal - cut user message and next assistant message."""
+        try:
+            sender = self.sender()
+            if sender and isinstance(sender, ChatMessageWidget):
+                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                    return
+                self._handle_cut_pair(sender)
+        except (RuntimeError, AttributeError):
+            return
+    
+    def _on_cut_below_requested(self):
+        """Slot for cutBelowRequested signal - cut this message and all below."""
+        try:
+            sender = self.sender()
+            if sender and isinstance(sender, ChatMessageWidget):
+                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                    return
+                self._handle_cut_below(sender)
+        except (RuntimeError, AttributeError):
+            return
+    
+    def _on_regenerate_user_requested(self):
+        """Slot for regenerateUserRequested signal - regenerate next assistant message."""
+        try:
+            sender = self.sender()
+            if sender and isinstance(sender, ChatMessageWidget):
+                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                    return
+                self._handle_regenerate_user_message(sender)
+        except (RuntimeError, AttributeError):
             return
     
 

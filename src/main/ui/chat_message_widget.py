@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QSize, Signal, QEvent, QTimer
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QWidget, QListWidgetItem, QTextEdit, QPushButton,
-    QHBoxLayout, QApplication, QGraphicsOpacityEffect
+    QHBoxLayout, QApplication, QGraphicsOpacityEffect, QMenu
 )
 
 from spell_check_text_edit import SpellCheckTextEdit
@@ -29,8 +29,11 @@ class ChatMessageWidget(QWidget):
     # Signals for button actions
     copyRequested = Signal()
     cutRequested = Signal()
+    cutPairRequested = Signal()  # Cut this user message and next assistant message
+    cutBelowRequested = Signal()  # Cut this message and all below
     forkRequested = Signal()
-    regenerateRequested = Signal()
+    regenerateRequested = Signal()  # For assistant messages
+    regenerateUserRequested = Signal()  # For user messages - regenerate next assistant
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -57,10 +60,10 @@ class ChatMessageWidget(QWidget):
         self.button_container = QWidget(self)
         self.button_container.setObjectName("buttonContainer")
         self.button_container.setStyleSheet("background-color: transparent;")
-        # Set a fixed size for the container - will be updated when regenerate button is added
-        # 3 buttons * 24px + 2 spacing * 2px = 76px width, 24px height
-        # With regenerate: 4 buttons * 24px + 3 spacing * 2px = 102px width
-        self.button_container.setFixedSize(76, 24)
+        # Set a fixed size for the container - will be updated based on visible buttons
+        # Max: 4 buttons * 24px + 3 spacing * 2px = 102px width, 24px height
+        # Min: 1 button * 24px = 24px width (for assistant messages)
+        self.button_container.setFixedSize(102, 24)
         self.button_container.raise_()  # Raise above other widgets
         
         # Create horizontal layout for buttons
@@ -148,13 +151,38 @@ class ChatMessageWidget(QWidget):
         self.cut_button._opacity_effect = opacity_effect
         self.cut_button.clicked.connect(self._on_cut_clicked)
         
-        # Add buttons to layout
+        # Create regenerate button for both user and assistant (shown/hidden based on role)
+        self.regenerate_button = QPushButton("🔄", self.button_container)
+        self.regenerate_button.setObjectName("regenerateButton")
+        self.regenerate_button.setToolTip("Regenerate response")
+        self.regenerate_button.setFixedSize(24, 24)
+        # Use opacity to make the entire button (including emoji) translucent
+        opacity_effect = QGraphicsOpacityEffect()
+        opacity_effect.setOpacity(0.5)  # 50% opacity
+        self.regenerate_button.setGraphicsEffect(opacity_effect)
+        self.regenerate_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(102, 102, 102, 0.5);
+                border-radius: 4px;
+                color: white;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.8);
+                border: 1px solid #666;
+                color: white;
+            }
+        """)
+        # Store effect reference for hover handling
+        self.regenerate_button._opacity_effect = opacity_effect
+        self.regenerate_button.installEventFilter(self)
+        
+        # Add buttons to layout in order: fork, regenerate, copy, cut
         button_layout.addWidget(self.fork_button)
+        button_layout.addWidget(self.regenerate_button)
         button_layout.addWidget(self.copy_button)
         button_layout.addWidget(self.cut_button)
-        
-        # Regenerate button (only for assistant messages, added dynamically)
-        self.regenerate_button = None
         
         # Initially hide buttons (show on hover)
         self.button_container.hide()
@@ -173,6 +201,7 @@ class ChatMessageWidget(QWidget):
         self.fork_button.installEventFilter(self)
         self.copy_button.installEventFilter(self)
         self.cut_button.installEventFilter(self)
+        self.regenerate_button.installEventFilter(self)
         
         # Position buttons initially (will be repositioned on hover)
         QTimer.singleShot(100, self._position_buttons)  # Give layout time to settle
@@ -186,12 +215,39 @@ class ChatMessageWidget(QWidget):
             self.copyRequested.emit()
     
     def _on_cut_clicked(self):
-        """Handle cut button click - copy to clipboard and emit cut signal."""
+        """Handle cut button click - show menu for user messages, direct cut for assistant."""
+        if self.role == "user":
+            # Show menu for user messages
+            menu = QMenu(self)
+            menu.addAction("Cut this query-response pair", self._on_cut_pair)
+            menu.addAction("Cut all contents below", self._on_cut_below)
+            menu.addAction("Cancel")
+            # Show menu at button position
+            button_pos = self.cut_button.mapToGlobal(self.cut_button.rect().bottomLeft())
+            menu.exec(button_pos)
+        else:
+            # For assistant messages (shouldn't happen, but handle gracefully)
+            content = self.get_content()
+            if content:
+                clipboard = QApplication.clipboard()
+                clipboard.setText(content)
+                self.cutRequested.emit()
+    
+    def _on_cut_pair(self):
+        """Handle cut pair action - copy to clipboard and emit signal."""
         content = self.get_content()
         if content:
             clipboard = QApplication.clipboard()
             clipboard.setText(content)
-            self.cutRequested.emit()
+        self.cutPairRequested.emit()
+    
+    def _on_cut_below(self):
+        """Handle cut below action - copy to clipboard and emit signal."""
+        content = self.get_content()
+        if content:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(content)
+        self.cutBelowRequested.emit()
     
     def enterEvent(self, event):
         """Show buttons when mouse enters the widget."""
@@ -214,12 +270,10 @@ class ChatMessageWidget(QWidget):
             self._set_buttons_opacity(0.5)
     
     def _set_buttons_opacity(self, opacity: float):
-        """Set opacity for all buttons."""
-        buttons = [self.fork_button, self.copy_button, self.cut_button]
-        if self.regenerate_button:
-            buttons.append(self.regenerate_button)
+        """Set opacity for all visible buttons."""
+        buttons = [self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]
         for button in buttons:
-            if button and hasattr(button, '_opacity_effect'):
+            if button and button.isVisible() and hasattr(button, '_opacity_effect'):
                 button._opacity_effect.setOpacity(opacity)
     
     def _position_buttons(self):
@@ -307,7 +361,7 @@ class ChatMessageWidget(QWidget):
                 # Hide buttons when mouse leaves button container
                 QTimer.singleShot(100, self._check_and_hide_buttons)
         # Handle button hover events for individual buttons
-        elif obj in [self.fork_button, self.copy_button, self.cut_button] or (self.regenerate_button and obj == self.regenerate_button):
+        elif obj in [self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]:
             if event.type() == QEvent.Type.Enter:
                 # Make button solid on hover
                 if hasattr(obj, '_opacity_effect'):
@@ -334,59 +388,47 @@ class ChatMessageWidget(QWidget):
             self.ui.messageContent.setStyleSheet("background-color: #444444; color: #FFFFFF;")
             self.ui.mainLayout.setAlignment(self.ui.messageContent, Qt.AlignmentFlag.AlignLeft)
         
-        # Show regenerate button only for assistant messages (not for thinking)
-        if self.regenerate_button is None and role == "assistant":
-            self._add_regenerate_button()
-        elif self.regenerate_button is not None:
-            self.regenerate_button.setVisible(role == "assistant")
+        # Show/hide buttons based on role
+        # Assistant messages: only copy button
+        # User messages: fork, regenerate, copy, cut
+        if role == "assistant":
+            self.fork_button.setVisible(False)
+            self.regenerate_button.setVisible(False)
+            self.copy_button.setVisible(True)
+            self.cut_button.setVisible(False)
+            # Update container size for assistant (1 button)
+            self.button_container.setFixedSize(24, 24)
+            # Disconnect any user regenerate handler and connect assistant handler
+            try:
+                self.regenerate_button.clicked.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            self.regenerate_button.clicked.connect(self.regenerateRequested.emit)
+        elif role == "user":
+            self.fork_button.setVisible(True)
+            self.regenerate_button.setVisible(True)
+            self.copy_button.setVisible(True)
+            self.cut_button.setVisible(True)
+            # Update container size for user (4 buttons)
+            self.button_container.setFixedSize(102, 24)
+            # Disconnect any assistant regenerate handler and connect user handler
+            try:
+                self.regenerate_button.clicked.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            self.regenerate_button.clicked.connect(self._on_regenerate_user_clicked)
+        else:
+            # For thinking or other roles, hide all buttons
+            self.fork_button.setVisible(False)
+            self.regenerate_button.setVisible(False)
+            self.copy_button.setVisible(False)
+            self.cut_button.setVisible(False)
 
         self.update_size()
     
-    def _add_regenerate_button(self):
-        """Add regenerate button for assistant messages."""
-        if self.regenerate_button is not None:
-            return
-        
-        self.regenerate_button = QPushButton("🔄", self.button_container)
-        self.regenerate_button.setObjectName("regenerateButton")
-        self.regenerate_button.setToolTip("Regenerate response")
-        self.regenerate_button.setFixedSize(24, 24)
-        # Use opacity to make the entire button (including emoji) translucent
-        opacity_effect = QGraphicsOpacityEffect()
-        opacity_effect.setOpacity(0.5)  # 50% opacity
-        self.regenerate_button.setGraphicsEffect(opacity_effect)
-        self.regenerate_button.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(0, 0, 0, 0.3);
-                border: 1px solid rgba(102, 102, 102, 0.5);
-                border-radius: 4px;
-                color: white;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.8);
-                border: 1px solid #666;
-                color: white;
-            }
-        """)
-        # Store effect reference for hover handling
-        self.regenerate_button._opacity_effect = opacity_effect
-        self.regenerate_button.clicked.connect(self.regenerateRequested.emit)
-        
-        # Install event filter for hover opacity changes
-        self.regenerate_button.installEventFilter(self)
-        
-        # Insert before fork button
-        button_layout = self.button_container.layout()
-        if button_layout and isinstance(button_layout, QHBoxLayout):
-            button_layout.insertWidget(0, self.regenerate_button)
-        elif button_layout:
-            # Fallback: add to end if not QHBoxLayout
-            button_layout.addWidget(self.regenerate_button)
-        
-        # Update container size to accommodate regenerate button
-        # 4 buttons * 24px + 3 spacing * 2px = 102px width
-        self.button_container.setFixedSize(102, 24)
+    def _on_regenerate_user_clicked(self):
+        """Handle regenerate button click for user messages."""
+        self.regenerateUserRequested.emit()
 
     def get_content(self) -> str:
         if self.ui.messageContent:
