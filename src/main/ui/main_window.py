@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QInputDialog, QTreeWidgetItem, QListWidget, QListWidgetItem,
     QTreeWidgetItemIterator, QDialog, QTextEdit, QLayout, QBoxLayout
 )
-from spell_check_text_edit import SpellCheckTextEdit
 
 # We MUST import PathRole to use it
 from chat_history_manager import ChatHistoryManager, PathRole
@@ -20,6 +19,7 @@ from config_manager import ConfigManager
 from key_manager import KeyManager
 from keys_dialog import KeysDialog
 from llm_service import LLMService
+from spell_check_text_edit import SpellCheckTextEdit
 from system_message_dialog import SystemMessageDialog
 
 
@@ -327,6 +327,10 @@ class MainWindow(QMainWindow):
         list_item = QListWidgetItem(self.chatDisplay)
 
         chat_widget.editingFinished.connect(self._save_current_chat)
+        # Connect action button signals using a slot that finds the widget by sender
+        # This avoids capturing widget references that might become invalid
+        chat_widget.cutRequested.connect(self._on_cut_requested)
+        chat_widget.regenerateRequested.connect(self._on_regenerate_requested)
 
         chat_widget.set_message(role, content, list_item, model)
         self.chatDisplay.setItemWidget(list_item, chat_widget)
@@ -455,15 +459,25 @@ class MainWindow(QMainWindow):
         messages_to_save.extend(system_messages)
         
         # Add messages from widgets
+        # IMPORTANT: Check widget validity to avoid segfaults
         for i in range(self.chatDisplay.count()):
             item = self.chatDisplay.item(i)
+            if not item:
+                continue
             widget = self.chatDisplay.itemWidget(item)
-            if isinstance(widget, ChatMessageWidget):
+            if widget and isinstance(widget, ChatMessageWidget):
+                # Skip deleted widgets
+                if hasattr(widget, '_is_deleted') and widget._is_deleted:
+                    continue
                 # Do not save "thinking" messages
                 role = widget.role
                 if role in ("user", "assistant"):
-                    # Use get_message_dict() to preserve model information
-                    messages_to_save.append(widget.get_message_dict())
+                    try:
+                        # Use get_message_dict() to preserve model information
+                        messages_to_save.append(widget.get_message_dict())
+                    except (RuntimeError, AttributeError):
+                        # Widget was deleted, skip it
+                        continue
 
         if self.messageInput:
             last_user_message = self.messageInput.toPlainText().strip()
@@ -700,6 +714,219 @@ class MainWindow(QMainWindow):
                         break
             # Save the error message to the chat
             self._save_current_chat()
+    
+    def _handle_cut_message(self, widget: ChatMessageWidget):
+        """Handle cut action: copy to clipboard, remove from chat history, and delete widget."""
+        # Wrap everything in try-except to catch any access to deleted widgets
+        try:
+            # Validate widget is still alive and valid
+            if not widget:
+                return
+            
+            # Get the list item - wrap in try-except as widget might be deleted
+            try:
+                list_item = widget.list_item
+                if not list_item:
+                    return
+            except (RuntimeError, AttributeError):
+                # Widget was deleted or list_item is invalid
+                return
+            
+            # Find the index of this widget in the chat display
+            list_widget = list_item.listWidget()
+            if not list_widget:
+                return
+            
+            # Get the index of this item
+            item_index = list_widget.row(list_item)
+            if item_index < 0:
+                return
+            
+            # Disconnect all signals from the widget before deletion
+            try:
+                widget.editingFinished.disconnect()
+            except (RuntimeError, TypeError, AttributeError):
+                pass
+            try:
+                widget.cutRequested.disconnect()
+            except (RuntimeError, TypeError, AttributeError):
+                pass
+            try:
+                widget.regenerateRequested.disconnect()
+            except (RuntimeError, TypeError, AttributeError):
+                pass
+            
+            # Remove the widget from the display
+            # IMPORTANT: Mark widget as deleted first to prevent signal handlers from accessing it
+            try:
+                widget._is_deleted = True
+                widget.setParent(None)
+                widget.list_item = None
+            except (RuntimeError, AttributeError):
+                pass
+            
+            # Remove widget from item first
+            existing_item = list_widget.item(item_index)
+            if existing_item:
+                list_widget.removeItemWidget(existing_item)
+            
+            # Now take the item
+            removed_item = list_widget.takeItem(item_index)
+            if removed_item:
+                del removed_item
+            # Don't call deleteLater() - let Python garbage collect it naturally
+            
+            # Save the chat (which will rebuild current_messages without this message)
+            self._save_current_chat()
+        except Exception as e:
+            # Catch any exception including segfault-like errors
+            print(f"Error in _handle_cut_message: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+    
+    def _handle_regenerate_message(self, widget: ChatMessageWidget):
+        """Handle regenerate: cut the message, send previous messages to LLM, insert response."""
+        # Wrap everything in try-except to catch any access to deleted widgets
+        try:
+            # Validate widget is still alive and valid
+            if not widget:
+                return
+            
+            # Get the list item - wrap in try-except as widget might be deleted
+            try:
+                list_item = widget.list_item
+                if not list_item:
+                    return
+            except (RuntimeError, AttributeError):
+                # Widget was deleted or list_item is invalid
+                return
+        
+            if not self.current_chat_file_path:
+                QMessageBox.warning(self, "No Chat Selected", "Cannot regenerate: no active chat.")
+                return
+            
+            if not self.llm_service or not self.modelComboBox:
+                QMessageBox.warning(self, "Error", "LLM service or model selector not available.")
+                return
+            
+            # 1. Copy content to clipboard
+            try:
+                content = widget.get_content()
+                if content:
+                    clipboard = QApplication.clipboard()
+                    clipboard.setText(content)
+            except (RuntimeError, AttributeError):
+                pass
+            
+            # Get the model to use (from the widget if assistant, or from combo box)
+            try:
+                model = widget.model if widget.role == "assistant" and widget.model else self.modelComboBox.currentText()
+            except (RuntimeError, AttributeError):
+                model = self.modelComboBox.currentText()
+            
+            # Find the list widget and get the index
+            list_widget = list_item.listWidget()
+            if not list_widget:
+                return
+            
+            item_index = list_widget.row(list_item)
+            if item_index < 0:
+                return
+            
+            # 2. Build message history up to (but not including) this message
+            messages_before = []
+            
+            # Get system messages first
+            system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
+            messages_before.extend(system_messages)
+            
+            # Get all displayed messages up to this index
+            for i in range(item_index):
+                item = list_widget.item(i)
+                if item:
+                    item_widget = list_widget.itemWidget(item)
+                    if isinstance(item_widget, ChatMessageWidget):
+                        role = item_widget.role
+                        if role in ("user", "assistant"):
+                            try:
+                                messages_before.append(item_widget.get_message_dict())
+                            except (RuntimeError, AttributeError):
+                                continue
+            
+            # 3. Show "thinking" state in the existing bubble
+            try:
+                widget.set_message("thinking", "...", list_item)
+                QApplication.processEvents()  # Update UI immediately
+            except (RuntimeError, AttributeError):
+                return
+            
+            # 4. Call LLM with messages before this one
+            try:
+                response_content = self.llm_service.get_response(model, messages_before)
+                
+                # 5. Replace the text in the existing bubble with the response
+                try:
+                    widget.set_message("assistant", response_content, list_item, model)
+                    # Ensure editingFinished is connected for saving
+                    try:
+                        widget.editingFinished.disconnect()
+                    except (RuntimeError, TypeError):
+                        pass
+                    widget.editingFinished.connect(self._save_current_chat)
+                    
+                    # Scroll to the item to keep it in view
+                    list_widget.scrollToItem(list_item)
+                    QApplication.processEvents()  # Force UI update
+                    
+                    # Save the chat with the new response
+                    self._save_current_chat()
+                except (RuntimeError, AttributeError) as e:
+                    print(f"Error updating widget: {e}")
+                    return
+                
+            except Exception as e:
+                error_message = f"Error: {e}"
+                try:
+                    widget.set_message("assistant", error_message, list_item, model)
+                    list_widget.scrollToItem(list_item)
+                    QApplication.processEvents()
+                    self._save_current_chat()
+                except (RuntimeError, AttributeError):
+                    pass
+        except Exception as e:
+            # Catch any exception including segfault-like errors
+            print(f"Error in _handle_regenerate_message: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+    
+    def _on_cut_requested(self):
+        """Slot for cutRequested signal - finds widget by sender to avoid capturing references."""
+        try:
+            sender = self.sender()
+            if sender and isinstance(sender, ChatMessageWidget):
+                # Check if widget is marked as deleted
+                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                    return
+                self._handle_cut_message(sender)
+        except (RuntimeError, AttributeError):
+            # Widget was deleted
+            return
+    
+    def _on_regenerate_requested(self):
+        """Slot for regenerateRequested signal - finds widget by sender to avoid capturing references."""
+        try:
+            sender = self.sender()
+            if sender and isinstance(sender, ChatMessageWidget):
+                # Check if widget is marked as deleted
+                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                    return
+                self._handle_regenerate_message(sender)
+        except (RuntimeError, AttributeError):
+            # Widget was deleted
+            return
+    
 
 
 def setup_logging(config_manager):
