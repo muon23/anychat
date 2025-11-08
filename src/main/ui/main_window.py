@@ -8,7 +8,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
     QComboBox, QTreeWidget, QMenu, QMessageBox,
-    QInputDialog, QTreeWidgetItem, QListWidget, QListWidgetItem,
+    QTreeWidgetItem, QListWidget, QListWidgetItem,
     QTreeWidgetItemIterator, QDialog, QTextEdit, QLayout, QBoxLayout, QLineEdit
 )
 
@@ -680,20 +680,19 @@ class MainWindow(QMainWindow):
                 self._start_inline_edit_project(new_item)
 
     def handle_rename_item(self, item: QTreeWidgetItem):
-        """Handles the 'Rename' context menu action."""
+        """Handles the 'Rename' context menu action - starts inline editing."""
         try:
+            # Check if it's a project (directory) or chat (file)
             old_path = Path(item.data(0, PathRole))
-            old_name = old_path.stem if old_path.is_file() else old_path.name
-
-            new_name, ok = QInputDialog.getText(self, "Rename Item", "Enter new name:",
-                                                text=old_name)
-
-            if ok and new_name and new_name != old_name:
-                if self.chat_history_manager.rename_item(old_path, new_name, self):
-                    self._load_chat_history()
+            if old_path.is_dir():
+                # It's a project - use project inline editing
+                self._start_inline_edit_project(item)
+            elif old_path.is_file() and old_path.suffix == '.json':
+                # It's a chat file in the tree - use chat tree inline editing
+                self._start_inline_edit_chat_tree(item)
         except Exception as e:
             print(f"Error during rename: {e}")
-            QMessageBox.warning(self, "Error", f"Could not rename item: {e}")
+            QMessageBox.warning(self, "Error", f"Could not start rename: {e}")
 
     def handle_delete_item(self, item: QTreeWidgetItem):
         """Handles the 'Delete' context menu action."""
@@ -706,20 +705,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
     
     def handle_rename_chat_item(self, item: QListWidgetItem):
-        """Handles the 'Rename' context menu action for chat list items."""
+        """Handles the 'Rename' context menu action for chat list items - starts inline editing."""
         try:
-            old_path = Path(item.data(PathRole))
-            old_name = old_path.stem if old_path.is_file() else old_path.name
-
-            new_name, ok = QInputDialog.getText(self, "Rename Item", "Enter new name:",
-                                                text=old_name)
-
-            if ok and new_name and new_name != old_name:
-                if self.chat_history_manager.rename_item(old_path, new_name, self):
-                    self._load_chat_history()
+            # Use inline editing for chat list items
+            self._start_inline_edit_chat(item)
         except Exception as e:
             print(f"Error during rename: {e}")
-            QMessageBox.warning(self, "Error", f"Could not rename item: {e}")
+            QMessageBox.warning(self, "Error", f"Could not start rename: {e}")
     
     def handle_delete_chat_item(self, item: QListWidgetItem):
         """Handles the 'Delete' context menu action for chat list items."""
