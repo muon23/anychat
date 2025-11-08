@@ -965,8 +965,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_system_text = dialog.get_text()
             
-            # Update or add system message
-            # Remove existing system messages
+            # Apply: Remove existing system messages first
             messages = [msg for msg in messages if msg.get("role") != "system"]
             
             # Add new system message at the beginning if not empty
