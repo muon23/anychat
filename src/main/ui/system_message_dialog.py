@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from contextlib import contextmanager
 
 from PySide6.QtWidgets import (
@@ -7,6 +8,9 @@ from PySide6.QtWidgets import (
 )
 
 from spell_check_text_edit import SpellCheckTextEdit
+
+# Class variable to store the last used directory
+_last_directory = None
 
 
 # Context manager to suppress macOS-specific Qt file dialog warnings
@@ -45,12 +49,15 @@ def suppress_macos_file_dialog_warnings():
 
 
 class SystemMessageDialog(QDialog):
-    def __init__(self, current_system_message: str = "", parent=None):
+    def __init__(self, current_system_message: str = "", parent=None, templates_directory: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Edit System Message")
         self.setModal(True)
         self.setMinimumSize(400, 300)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # Store templates directory (default to current directory if empty)
+        self.templates_directory = templates_directory if templates_directory else str(Path.cwd())
         
         # Create layout
         layout = QVBoxLayout(self)
@@ -99,16 +106,24 @@ class SystemMessageDialog(QDialog):
     
     def _load_from_file(self):
         """Opens a file selection dialog to load a .txt file."""
+        global _last_directory
+        
+        # Determine starting directory: last used > templates directory > current directory
+        start_dir = _last_directory if _last_directory else self.templates_directory
+        
         with suppress_macos_file_dialog_warnings():
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
                 "Load System Message",
-                "",
+                start_dir,
                 "Text Files (*.txt);;All Files (*)"
             )
         
         if file_path:
             try:
+                # Update last directory to the directory of the loaded file
+                _last_directory = str(Path(file_path).parent)
+                
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 # Overwrite current content
@@ -118,11 +133,16 @@ class SystemMessageDialog(QDialog):
     
     def _save_to_file(self):
         """Opens a file selection dialog to save the current content to a .txt file."""
+        global _last_directory
+        
+        # Determine starting directory: last used > templates directory > current directory
+        start_dir = _last_directory if _last_directory else self.templates_directory
+        
         with suppress_macos_file_dialog_warnings():
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "Save System Message",
-                "",
+                start_dir,
                 "Text Files (*.txt);;All Files (*)"
             )
         
@@ -131,6 +151,9 @@ class SystemMessageDialog(QDialog):
                 # Ensure .txt extension if not present
                 if not file_path.endswith('.txt'):
                     file_path += '.txt'
+                
+                # Update last directory to the directory of the saved file
+                _last_directory = str(Path(file_path).parent)
                 
                 content = self.text_edit.toPlainText()
                 with open(file_path, 'w', encoding='utf-8') as f:

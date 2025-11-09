@@ -34,7 +34,8 @@ class ConfigManager:
             'keys_file': 'deployment/dev/api_keys.json',
             'chat_history_root': 'deployment/dev/chats',
             'providers': 'OpenAI, Anthropic, Google AI, DeepInfra',
-            'models': 'gpt-4o, gemini-2.5, llama-4'
+            'models': 'gpt-4o, gemini-2.5, llama-4',
+            'system_message_templates': ''
         }
         self.config['gpt-4o'] = {
             'temperature': '0.7'
@@ -152,3 +153,10 @@ class ConfigManager:
         if level in valid_levels:
             return level
         return 'warning'
+    
+    def get_system_message_templates(self) -> str:
+        """
+        Returns the system message templates directory from the [General] section.
+        Defaults to empty string (current directory) if not specified.
+        """
+        return self.config.get('General', 'system_message_templates', fallback='')

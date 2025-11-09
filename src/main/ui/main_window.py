@@ -960,8 +960,11 @@ class MainWindow(QMainWindow):
                 system_message = msg.get("content", "")
                 break
         
+        # Get templates directory from config
+        templates_dir = self.config_manager.get_system_message_templates()
+        
         # Open dialog
-        dialog = SystemMessageDialog(system_message, self)
+        dialog = SystemMessageDialog(system_message, self, templates_directory=templates_dir)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_system_text = dialog.get_text()
             
