@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -99,18 +100,50 @@ class Llm(ABC):
     def preprocess_prompt(self, prompt: Sequence[tuple[Role | str, str] | str] | str) -> ChatPromptTemplate:
         """
         Converts various input prompt formats into a standardized ChatPromptTemplate.
+        
+        Escapes curly braces inside code blocks (```...```) to prevent LangChain from
+        interpreting them as template variables, while preserving actual template
+        variables outside code blocks.
         """
+        def escape_code_blocks(text: str) -> str:
+            """
+            Escape curly braces inside code blocks (```...```) while preserving
+            template variables outside code blocks.
+            
+            Strategy:
+            1. Find all code blocks (```language ... ``` or ``` ... ```)
+            2. Escape curly braces inside code blocks only
+            3. Leave everything else unchanged (including template variables)
+            """
+            # Pattern to match code blocks: ```optional_language\ncontent\n```
+            # This handles both ```json\n...\n``` and ```\n...\n``` formats
+            code_block_pattern = r'```(\w+)?\n(.*?)```'
+            
+            def escape_code_content(match):
+                """Escape curly braces inside a code block."""
+                language = match.group(1) or ''
+                code_content = match.group(2)
+                # Escape all curly braces in the code content
+                escaped_content = code_content.replace("{", "{{").replace("}", "}}")
+                return f"```{language}\n{escaped_content}```"
+            
+            # Replace code blocks with escaped versions
+            result = re.sub(code_block_pattern, escape_code_content, text, flags=re.DOTALL)
+            return result
+        
         # If the prompt is a simple string, wrap it as a single message
         if isinstance(prompt, str):
             # This handles single instruction prompts
             human_role_name = self.role_names[self.Role.HUMAN]
-            return ChatPromptTemplate(messages=[(human_role_name, prompt)])
+            return ChatPromptTemplate(messages=[(human_role_name, escape_code_blocks(prompt))])
         else:
             # Reformat the sequence of (Role, content) tuples into LangChain messages
             messages = []
             for msg in prompt:
                 role_name = self.role_names[msg[0]] if isinstance(msg[0], self.Role) else msg[0]
-                messages.append((role_name, msg[1]))
+                # Escape curly braces inside code blocks only
+                escaped_content = escape_code_blocks(msg[1])
+                messages.append((role_name, escaped_content))
             return ChatPromptTemplate(messages=messages)
 
     @abstractmethod

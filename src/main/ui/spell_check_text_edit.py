@@ -1,7 +1,8 @@
 import logging
+import sys
 
 from PySide6.QtCore import Qt, QPoint, QTimer
-from PySide6.QtGui import QTextCharFormat, QTextCursor, QColor
+from PySide6.QtGui import QTextCharFormat, QTextCursor, QColor, QKeyEvent
 from PySide6.QtWidgets import QTextEdit, QMenu
 
 logger = logging.getLogger(__name__)
@@ -334,4 +335,172 @@ class SpellCheckTextEdit(QTextEdit):
             except Exception as e:
                 logger.warning(f"Could not add word to dictionary: {e}")
     
+    def keyPressEvent(self, event: QKeyEvent):
+        """Override to implement Emacs key bindings."""
+        modifiers = event.modifiers()
+        key = event.key()
+        
+        # On macOS, ControlModifier is Command (⌘), MetaModifier is Control (Ctrl)
+        # On Linux/Windows, ControlModifier is Ctrl
+        # For Emacs bindings, we want the actual Control key
+        if sys.platform == 'darwin':  # macOS
+            ctrl_modifier = Qt.KeyboardModifier.MetaModifier
+            alt_modifier = Qt.KeyboardModifier.AltModifier
+        else:  # Linux/Windows
+            ctrl_modifier = Qt.KeyboardModifier.ControlModifier
+            alt_modifier = Qt.KeyboardModifier.AltModifier
+        
+        # Check for Ctrl key combinations
+        if modifiers == ctrl_modifier:
+            if key == Qt.Key.Key_A:  # Ctrl+A: Beginning of line
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_E:  # Ctrl+E: End of line
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.EndOfLine)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_B:  # Ctrl+B: Backward one character
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.Left)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_F:  # Ctrl+F: Forward one character
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.Right)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_N:  # Ctrl+N: Next line
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.Down)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_P:  # Ctrl+P: Previous line
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.Up)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_K:  # Ctrl+K: Kill to end of line (or newline if at end)
+                cursor = self.textCursor()
+                # Check if cursor is already at the end of the line
+                line_end_pos = cursor.position()
+                cursor.movePosition(QTextCursor.MoveOperation.EndOfLine)
+                if cursor.position() == line_end_pos:
+                    # Already at end of line, delete the newline
+                    cursor.deleteChar()
+                else:
+                    # Not at end, kill to end of line
+                    cursor.setPosition(line_end_pos)
+                    cursor.movePosition(QTextCursor.MoveOperation.EndOfLine, QTextCursor.MoveMode.KeepAnchor)
+                    if cursor.hasSelection():
+                        self.setTextCursor(cursor)
+                        self.cut()  # Cut the selected text
+                event.accept()
+                return
+            elif key == Qt.Key.Key_Y:  # Ctrl+Y: Yank (paste)
+                self.paste()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_W:  # Ctrl+W: Kill region (cut)
+                cursor = self.textCursor()
+                if cursor.hasSelection():
+                    self.cut()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_Space:  # Ctrl+Space: Set mark (start selection)
+                cursor = self.textCursor()
+                # Toggle selection anchor
+                if cursor.hasSelection():
+                    cursor.clearSelection()
+                else:
+                    # Start selection from current position
+                    cursor.movePosition(QTextCursor.MoveOperation.NoMove, QTextCursor.MoveMode.KeepAnchor)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_D:  # Ctrl+D: Delete character
+                cursor = self.textCursor()
+                if not cursor.hasSelection():
+                    cursor.deleteChar()
+                else:
+                    cursor.removeSelectedText()
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_H:  # Ctrl+H: Backspace
+                cursor = self.textCursor()
+                if cursor.hasSelection():
+                    cursor.removeSelectedText()
+                else:
+                    cursor.deletePreviousChar()
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_T:  # Ctrl+T: Transpose characters
+                cursor = self.textCursor()
+                pos = cursor.position()
+                text = self.toPlainText()
+                if pos > 0 and pos < len(text):
+                    # Swap current and previous character
+                    prev_char = text[pos - 1]
+                    curr_char = text[pos] if pos < len(text) else ''
+                    if prev_char and curr_char:
+                        # Replace both characters
+                        cursor.setPosition(pos - 1)
+                        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor)
+                        cursor.insertText(curr_char + prev_char)
+                        cursor.setPosition(pos)
+                        self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_U:  # Ctrl+U: Kill to beginning of line
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfLine, QTextCursor.MoveMode.KeepAnchor)
+                if cursor.hasSelection():
+                    self.setTextCursor(cursor)
+                    self.cut()  # Cut the selected text
+                event.accept()
+                return
+        
+        # Check for Alt (Meta) key combinations
+        elif modifiers == alt_modifier:
+            if key == Qt.Key.Key_F:  # Alt+F: Forward one word
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.NextWord)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_B:  # Alt+B: Backward one word
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.PreviousWord)
+                self.setTextCursor(cursor)
+                event.accept()
+                return
+            elif key == Qt.Key.Key_D:  # Alt+D: Kill word
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.EndOfWord, QTextCursor.MoveMode.KeepAnchor)
+                if cursor.hasSelection():
+                    self.setTextCursor(cursor)
+                    self.cut()  # Cut the selected text
+                event.accept()
+                return
+            elif key == Qt.Key.Key_Backspace:  # Alt+Backspace: Kill word backward
+                cursor = self.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfWord, QTextCursor.MoveMode.KeepAnchor)
+                if cursor.hasSelection():
+                    self.setTextCursor(cursor)
+                    self.cut()  # Cut the selected text
+                event.accept()
+                return
+        
+        # For all other keys, use default behavior
+        super().keyPressEvent(event)
 
