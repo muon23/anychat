@@ -5,6 +5,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QApplication, QGraphicsOpacityEffect, QMenu, QBoxLayout
 )
 
+import markdown
+
 from spell_check_text_edit import SpellCheckTextEdit
 
 # Import the compiled UI class
@@ -34,6 +36,7 @@ class ChatMessageWidget(QWidget):
     forkRequested = Signal()
     regenerateRequested = Signal()  # For assistant messages
     regenerateUserRequested = Signal()  # For user messages - regenerate next assistant
+    focused = Signal(str, str)  # Emitted when widget gets focus: (role, model)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,6 +54,10 @@ class ChatMessageWidget(QWidget):
         self._resize_start_size = QSize()
         self._custom_width = None  # Custom width set by user (None = auto)
         self._custom_height = None  # Custom height set by user (None = auto)
+        
+        # Display mode for assistant messages: "rendered" (default) or "raw"
+        self._display_mode = "rendered"  # "rendered" or "raw"
+        self._raw_content = ""  # Store raw content for mode switching
         
         # Create button container and buttons (including resize button)
         self._create_action_buttons()
@@ -218,6 +225,35 @@ class ChatMessageWidget(QWidget):
         self.regenerate_button._opacity_effect = opacity_effect
         self.regenerate_button.installEventFilter(self)
         
+        # Create mode toggle button for assistant messages (pencil for rendered, eye for raw)
+        self.mode_toggle_button = QPushButton("✏️", self.button_container)
+        self.mode_toggle_button.setObjectName("modeToggleButton")
+        self.mode_toggle_button.setToolTip("Switch to raw text mode")
+        self.mode_toggle_button.setFixedSize(24, 24)
+        # Use opacity to make the entire button (including emoji) translucent
+        opacity_effect = QGraphicsOpacityEffect()
+        opacity_effect.setOpacity(0.5)  # 50% opacity
+        self.mode_toggle_button.setGraphicsEffect(opacity_effect)
+        self.mode_toggle_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(102, 102, 102, 0.5);
+                border-radius: 4px;
+                color: white;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.8);
+                border: 1px solid #666;
+                color: white;
+            }
+        """)
+        # Store effect reference for hover handling
+        self.mode_toggle_button._opacity_effect = opacity_effect
+        self.mode_toggle_button.installEventFilter(self)
+        self.mode_toggle_button.clicked.connect(self._on_mode_toggle_clicked)
+        self.mode_toggle_button.setVisible(False)  # Hidden by default, shown for assistant messages
+        
         # Add buttons to layout - resize button is separate for user messages
         # For now, add all buttons except resize (it's separate for user messages)
         button_layout.addWidget(self.fork_button)
@@ -244,6 +280,7 @@ class ChatMessageWidget(QWidget):
         self.copy_button.installEventFilter(self)
         self.cut_button.installEventFilter(self)
         self.regenerate_button.installEventFilter(self)
+        self.mode_toggle_button.installEventFilter(self)
         
         # Position buttons initially (will be repositioned on hover)
         QTimer.singleShot(100, self._position_buttons)  # Give layout time to settle
@@ -353,7 +390,7 @@ class ChatMessageWidget(QWidget):
     
     def _set_buttons_opacity(self, opacity: float):
         """Set opacity for all visible buttons."""
-        buttons = [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]
+        buttons = [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button, self.mode_toggle_button]
         for button in buttons:
             if button and button.isVisible() and hasattr(button, '_opacity_effect'):
                 button._opacity_effect.setOpacity(opacity)
@@ -467,6 +504,23 @@ class ChatMessageWidget(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press events."""
         super().mousePressEvent(event)
+        # When clicked, set focus and emit focused signal for assistant messages
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setFocus()
+            if self.role == "assistant":
+                if self.model:
+                    self.focused.emit(self.role, self.model)
+                else:
+                    self.focused.emit(self.role, "")
+    
+    def focusInEvent(self, event):
+        """Handle focus in event - emit signal with role and model info."""
+        super().focusInEvent(event)
+        if self.role == "assistant" and self.model:
+            self.focused.emit(self.role, self.model)
+        elif self.role == "assistant":
+            # Even if no model, emit with empty model string
+            self.focused.emit(self.role, "")
     
     def eventFilter(self, obj, event: QEvent):
         # No longer handling resize handle events here - using mouse events instead
@@ -476,6 +530,13 @@ class ChatMessageWidget(QWidget):
             if event.type() == QEvent.Type.FocusOut:
                 print("Editing finished, triggering save.")
                 self.editingFinished.emit()
+            elif event.type() == QEvent.Type.FocusIn:
+                # When messageContent gets focus, also emit focused signal for assistant messages
+                if self.role == "assistant":
+                    if self.model:
+                        self.focused.emit(self.role, self.model)
+                    else:
+                        self.focused.emit(self.role, "")
             elif event.type() == QEvent.Type.Enter:
                 # Show buttons and resize handle when mouse enters messageContent
                 if self.ui.messageContent:
@@ -497,7 +558,7 @@ class ChatMessageWidget(QWidget):
                 # Hide buttons when mouse leaves button container
                 QTimer.singleShot(100, self._check_and_hide_buttons)
         # Handle button hover events for individual buttons
-        elif obj in [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]:
+        elif obj in [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button, self.mode_toggle_button]:
             if event.type() == QEvent.Type.Enter:
                 # Make button solid on hover
                 if hasattr(obj, '_opacity_effect'):
@@ -515,11 +576,25 @@ class ChatMessageWidget(QWidget):
         self.list_item = list_item
         self.role = role
         self.model = model if role == "assistant" else None  # Only store model for assistant messages
-        self.ui.messageContent.setPlainText(content)
+        
+        # Store raw content
+        self._raw_content = content
         
         # Reset custom size when message changes (user can resize again)
         self._custom_width = None
         self._custom_height = None
+        
+        # For assistant messages, default to rendered mode
+        if role == "assistant":
+            self._display_mode = "rendered"
+            self._update_display_mode()
+        else:
+            # For user messages, always use plain text
+            self.ui.messageContent.setPlainText(content)
+            # Enable editing and spell check for user messages
+            if isinstance(self.ui.messageContent, SpellCheckTextEdit):
+                self.ui.messageContent.setReadOnly(False)
+                self.ui.messageContent.setAcceptRichText(False)
 
         if role == "user":
             self.ui.messageContent.setStyleSheet("background-color: #333333; color: #FFFFFF;")
@@ -529,33 +604,36 @@ class ChatMessageWidget(QWidget):
             self.ui.mainLayout.setAlignment(self.ui.messageContent, Qt.AlignmentFlag.AlignLeft)
         
         # Show/hide buttons based on role and set order
-        # Assistant messages: regenerate, copy, resize (from left to right)
+        # Assistant messages: regenerate, mode_toggle, copy, resize (from left to right)
         # User messages: resize, fork, regenerate, copy, cut (from left to right)
         if role == "assistant":
             # Hide user-specific buttons
             self.fork_button.setVisible(False)
             self.cut_button.setVisible(False)
-            # Show assistant buttons: regenerate, copy, resize
+            # Show assistant buttons: regenerate, mode_toggle, copy, resize
             self.regenerate_button.setVisible(True)
+            self.mode_toggle_button.setVisible(True)
             self.copy_button.setVisible(True)
             self.resize_button.setVisible(True)
             self.resize_button.setText("↘️")
-            # Reorder buttons: regenerate, copy, resize
+            # Reorder buttons: regenerate, mode_toggle, copy, resize
             layout = self.button_container.layout()
             if layout and isinstance(layout, QBoxLayout):
                 # Remove resize if it was added before (shouldn't be, but just in case)
                 try:
                     layout.removeWidget(self.resize_button)
+                    layout.removeWidget(self.mode_toggle_button)
                 except:
                     pass
-                # Reorder buttons: regenerate, copy, resize
+                # Reorder buttons: regenerate, mode_toggle, copy, resize
                 layout.removeWidget(self.regenerate_button)
                 layout.removeWidget(self.copy_button)
                 layout.insertWidget(0, self.regenerate_button)
-                layout.insertWidget(1, self.copy_button)
-                layout.insertWidget(2, self.resize_button)
-            # Update container size for assistant (3 buttons: regenerate, copy, resize, with 2px spacing)
-            self.button_container.setFixedSize(74, 24)
+                layout.insertWidget(1, self.mode_toggle_button)
+                layout.insertWidget(2, self.copy_button)
+                layout.insertWidget(3, self.resize_button)
+            # Update container size for assistant (4 buttons: regenerate, mode_toggle, copy, resize, with 2px spacing)
+            self.button_container.setFixedSize(98, 24)
             # Disconnect any existing handler and connect assistant handler
             if self._regenerate_handler is not None:
                 try:
@@ -610,16 +688,102 @@ class ChatMessageWidget(QWidget):
             self.regenerate_button.setVisible(False)
             self.copy_button.setVisible(False)
             self.cut_button.setVisible(False)
+            self.mode_toggle_button.setVisible(False)
 
         self.update_size()
+    
+    def _on_mode_toggle_clicked(self):
+        """Handle mode toggle button click - switch between rendered and raw modes."""
+        if self.role != "assistant":
+            return
+        
+        # If switching from raw to rendered, save any edits made in raw mode
+        if self._display_mode == "raw" and self.ui.messageContent:
+            self._raw_content = self.ui.messageContent.toPlainText()
+            # Emit editingFinished signal to trigger save
+            self.editingFinished.emit()
+        
+        # Toggle mode
+        if self._display_mode == "rendered":
+            self._display_mode = "raw"
+        else:
+            self._display_mode = "rendered"
+        
+        self._update_display_mode()
+    
+    def _update_display_mode(self):
+        """Update the display based on current mode (rendered or raw)."""
+        if self.role != "assistant" or not self.ui.messageContent:
+            return
+        
+        if self._display_mode == "rendered":
+            # Rendered mode: Convert Markdown to HTML and display
+            html_content = markdown.markdown(self._raw_content, extensions=['fenced_code', 'tables'])
+            # Add basic styling for dark theme
+            styled_html = f"""
+            <style>
+                body {{ color: #FFFFFF; background-color: transparent; }}
+                code {{ background-color: rgba(0, 0, 0, 0.3); padding: 2px 4px; border-radius: 3px; }}
+                pre {{ background-color: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 4px; overflow-x: auto; }}
+                pre code {{ background-color: transparent; padding: 0; }}
+                table {{ border-collapse: collapse; margin: 8px 0; }}
+                th, td {{ border: 1px solid #666; padding: 6px; }}
+                th {{ background-color: rgba(0, 0, 0, 0.2); }}
+                a {{ color: #4A9EFF; }}
+            </style>
+            {html_content}
+            """
+            self.ui.messageContent.setHtml(styled_html)
+            self.ui.messageContent.setReadOnly(True)
+            self.ui.messageContent.setAcceptRichText(True)
+            # Note: Spell check is disabled in rendered mode since it's read-only
+            
+            # Update button icon and tooltip
+            self.mode_toggle_button.setText("✏️")
+            self.mode_toggle_button.setToolTip("Switch to raw text mode")
+        else:
+            # Raw mode: Display plain text, enable editing and spell check
+            self.ui.messageContent.setPlainText(self._raw_content)
+            self.ui.messageContent.setReadOnly(False)
+            self.ui.messageContent.setAcceptRichText(False)
+            # Spell check is already enabled for SpellCheckTextEdit
+            
+            # Connect to textChanged to update raw_content when user edits
+            # Disconnect first to avoid multiple connections
+            try:
+                if isinstance(self.ui.messageContent, SpellCheckTextEdit):
+                    self.ui.messageContent.textChanged.disconnect(self._on_raw_content_changed)
+            except (RuntimeError, TypeError):
+                pass
+            if isinstance(self.ui.messageContent, SpellCheckTextEdit):
+                self.ui.messageContent.textChanged.connect(self._on_raw_content_changed)
+            
+            # Update button icon and tooltip
+            self.mode_toggle_button.setText("👁️")
+            self.mode_toggle_button.setToolTip("Switch to rendered mode")
+    
+    def _on_raw_content_changed(self):
+        """Update raw_content when user edits in raw mode."""
+        if self._display_mode == "raw" and self.ui.messageContent:
+            self._raw_content = self.ui.messageContent.toPlainText()
     
     def _on_regenerate_user_clicked(self):
         """Handle regenerate button click for user messages."""
         self.regenerateUserRequested.emit()
 
     def get_content(self) -> str:
-        if self.ui.messageContent:
-            return self.ui.messageContent.toPlainText()
+        """Get the current content. For assistant messages, always return raw content."""
+        if self.role == "assistant":
+            # Always return raw content, regardless of display mode
+            if self._display_mode == "raw":
+                # If in raw mode, get from the text edit (user may have edited)
+                if self.ui.messageContent:
+                    self._raw_content = self.ui.messageContent.toPlainText()
+            return self._raw_content
+        else:
+            # For user messages, get from text edit
+            if self.ui.messageContent:
+                return self.ui.messageContent.toPlainText()
         return ""
 
     def get_message_dict(self) -> dict:

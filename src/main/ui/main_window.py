@@ -53,6 +53,7 @@ class MainWindow(QMainWindow):
         self.current_chat_file_path: Path | None = None
         # Store current messages to avoid re-reading from widgets
         self.current_messages: list[dict] = []
+        self._focused_assistant_widget = None  # Track which assistant message is currently focused
 
         self._load_ui()
 
@@ -392,6 +393,8 @@ class MainWindow(QMainWindow):
         chat_widget.cutBelowRequested.connect(self._on_cut_below_requested)
         chat_widget.regenerateRequested.connect(self._on_regenerate_requested)
         chat_widget.regenerateUserRequested.connect(self._on_regenerate_user_requested)
+        # Connect focus signal to update modelComboBox
+        chat_widget.focused.connect(self._on_message_focused)
 
         chat_widget.set_message(role, content, list_item, model)
         self.chatDisplay.setItemWidget(list_item, chat_widget)
@@ -409,6 +412,8 @@ class MainWindow(QMainWindow):
             self.chatDisplay.clear()
         if self.messageInput:
             self.messageInput.clear()
+        # Clear focused widget reference
+        self._focused_assistant_widget = None
         # Do NOT clear self.current_messages here
 
     def _on_tree_item_selected(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
@@ -1185,11 +1190,9 @@ class MainWindow(QMainWindow):
             # Get user input from dialog
             user_input = dialog.get_text()
             
-            # Get the model to use (from the widget if available, or from combo box)
-            try:
-                model = widget.model if widget.model else self.modelComboBox.currentText()
-            except (RuntimeError, AttributeError):
-                model = self.modelComboBox.currentText()
+            # Get the model to use from the combo box (user may have changed it)
+            # This allows user to regenerate with a different model than the original
+            model = self.modelComboBox.currentText()
             
             # Find the list widget and get the index
             list_widget = list_item.listWidget()
@@ -1582,6 +1585,22 @@ class MainWindow(QMainWindow):
                 self._handle_cut_below(sender)
         except (RuntimeError, AttributeError):
             return
+    
+    def _on_message_focused(self, role: str, model: str):
+        """Handle message focus - update modelComboBox for assistant messages."""
+        if role == "assistant" and self.modelComboBox:
+            # Get the widget that emitted the signal
+            widget = self.sender()
+            if isinstance(widget, ChatMessageWidget):
+                # Only update if this is a different widget than the one currently focused
+                # This prevents resetting the combo box when user is changing it
+                if widget != self._focused_assistant_widget:
+                    self._focused_assistant_widget = widget
+                    if model:
+                        # Find the model in the combo box and set it as current
+                        index = self.modelComboBox.findText(model)
+                        if index >= 0:
+                            self.modelComboBox.setCurrentIndex(index)
     
     def _on_regenerate_user_requested(self):
         """Slot for regenerateUserRequested signal - regenerate next assistant message."""
