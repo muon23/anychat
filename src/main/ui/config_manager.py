@@ -35,7 +35,8 @@ class ConfigManager:
             'chat_history_root': 'deployment/dev/chats',
             'providers': 'OpenAI, Anthropic, Google AI, DeepInfra',
             'models': 'gpt-4o, gemini-2.5, llama-4',
-            'system_message_templates': ''
+            'system_message_templates': '',
+            'refine_prompt': 'Rework your previous response based on the following comments:'
         }
         self.config['gpt-4o'] = {
             'temperature': '0.7'
@@ -160,3 +161,10 @@ class ConfigManager:
         Defaults to empty string (current directory) if not specified.
         """
         return self.config.get('General', 'system_message_templates', fallback='')
+    
+    def get_refine_prompt(self) -> str:
+        """
+        Returns the refine prompt from the [General] section.
+        Defaults to 'Rework your previous response based on the following comments:' if not specified.
+        """
+        return self.config.get('General', 'refine_prompt', fallback='Rework your previous response based on the following comments:')

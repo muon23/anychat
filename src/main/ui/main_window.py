@@ -21,6 +21,7 @@ from keys_dialog import KeysDialog
 from llm_service import LLMService
 from spell_check_text_edit import SpellCheckTextEdit
 from system_message_dialog import SystemMessageDialog
+from refine_dialog import RefineDialog
 
 
 class MainWindow(QMainWindow):
@@ -1117,11 +1118,10 @@ class MainWindow(QMainWindow):
             return
     
     def _handle_regenerate_message(self, widget: ChatMessageWidget):
-        """Handle regenerate: cut the message, send previous messages to LLM, insert response."""
-        # Wrap everything in try-except to catch any access to deleted widgets
+        """Handle regenerate for assistant message: show refine dialog and refine/regenerate."""
         try:
             # Validate widget is still alive and valid
-            if not widget:
+            if not widget or widget.role != "assistant":
                 return
             
             # Get the list item - wrap in try-except as widget might be deleted
@@ -1130,29 +1130,31 @@ class MainWindow(QMainWindow):
                 if not list_item:
                     return
             except (RuntimeError, AttributeError):
-                # Widget was deleted or list_item is invalid
                 return
         
             if not self.current_chat_file_path:
-                QMessageBox.warning(self, "No Chat Selected", "Cannot regenerate: no active chat.")
+                QMessageBox.warning(self, "No Chat Selected", "Cannot refine: no active chat.")
                 return
             
             if not self.llm_service or not self.modelComboBox:
                 QMessageBox.warning(self, "Error", "LLM service or model selector not available.")
                 return
             
-            # 1. Copy content to clipboard
-            try:
-                content = widget.get_content()
-                if content:
-                    clipboard = QApplication.clipboard()
-                    clipboard.setText(content)
-            except (RuntimeError, AttributeError):
-                pass
+            # Get refine prompt from config
+            refine_prompt = self.config_manager.get_refine_prompt()
             
-            # Get the model to use (from the widget if assistant, or from combo box)
+            # Show refine dialog
+            dialog = RefineDialog(refine_prompt=refine_prompt, parent=self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                # User cancelled
+                return
+            
+            # Get user input from dialog
+            user_input = dialog.get_text()
+            
+            # Get the model to use (from the widget if available, or from combo box)
             try:
-                model = widget.model if widget.role == "assistant" and widget.model else self.modelComboBox.currentText()
+                model = widget.model if widget.model else self.modelComboBox.currentText()
             except (RuntimeError, AttributeError):
                 model = self.modelComboBox.currentText()
             
@@ -1161,42 +1163,78 @@ class MainWindow(QMainWindow):
             if not list_widget:
                 return
             
-            item_index = list_widget.row(list_item)
-            if item_index < 0:
+            assistant_index = list_widget.row(list_item)
+            if assistant_index < 0:
                 return
             
-            # 2. Build message history up to (but not including) this message
-            messages_before = []
+            # Build messages based on whether user input is empty
+            if not user_input:
+                # Empty input: regenerate - take chat history up to and including the last user message
+                messages_to_send = []
+                
+                # Get system messages first
+                system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
+                messages_to_send.extend(system_messages)
+                
+                # Find the last user message before this assistant message
+                last_user_index = -1
+                for i in range(assistant_index - 1, -1, -1):
+                    item = list_widget.item(i)
+                    if item:
+                        item_widget = list_widget.itemWidget(item)
+                        if isinstance(item_widget, ChatMessageWidget) and item_widget.role == "user":
+                            last_user_index = i
+                            break
+                
+                # Get all displayed messages up to and including the last user message
+                for i in range(last_user_index + 1):
+                    item = list_widget.item(i)
+                    if item:
+                        item_widget = list_widget.itemWidget(item)
+                        if isinstance(item_widget, ChatMessageWidget):
+                            role = item_widget.role
+                            if role in ("user", "assistant"):
+                                try:
+                                    messages_to_send.append(item_widget.get_message_dict())
+                                except (RuntimeError, AttributeError):
+                                    continue
+            else:
+                # Has user input: refine - duplicate chat history up to and including this assistant message
+                messages_to_send = []
+                
+                # Get system messages first
+                system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
+                messages_to_send.extend(system_messages)
+                
+                # Get all displayed messages up to and including this assistant message
+                for i in range(assistant_index + 1):
+                    item = list_widget.item(i)
+                    if item:
+                        item_widget = list_widget.itemWidget(item)
+                        if isinstance(item_widget, ChatMessageWidget):
+                            role = item_widget.role
+                            if role in ("user", "assistant"):
+                                try:
+                                    messages_to_send.append(item_widget.get_message_dict())
+                                except (RuntimeError, AttributeError):
+                                    continue
+                
+                # Add the refine user message at the end
+                refine_message = f"{refine_prompt}\n\n{user_input}"
+                messages_to_send.append({"role": "user", "content": refine_message})
             
-            # Get system messages first
-            system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
-            messages_before.extend(system_messages)
-            
-            # Get all displayed messages up to this index
-            for i in range(item_index):
-                item = list_widget.item(i)
-                if item:
-                    item_widget = list_widget.itemWidget(item)
-                    if isinstance(item_widget, ChatMessageWidget):
-                        role = item_widget.role
-                        if role in ("user", "assistant"):
-                            try:
-                                messages_before.append(item_widget.get_message_dict())
-                            except (RuntimeError, AttributeError):
-                                continue
-            
-            # 3. Show "thinking" state in the existing bubble
+            # Show "thinking" state in the existing bubble
             try:
                 widget.set_message("thinking", "...", list_item)
                 QApplication.processEvents()  # Update UI immediately
             except (RuntimeError, AttributeError):
                 return
             
-            # 4. Call LLM with messages before this one
+            # Call LLM with the messages
             try:
-                response_content = self.llm_service.get_response(model, messages_before)
+                response_content = self.llm_service.get_response(model, messages_to_send)
                 
-                # 5. Replace the text in the existing bubble with the response
+                # Replace the text in the existing bubble with the response
                 try:
                     widget.set_message("assistant", response_content, list_item, model)
                     # Ensure editingFinished is connected for saving

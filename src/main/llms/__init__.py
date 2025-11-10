@@ -35,7 +35,7 @@ def of(model_name: str, **kwargs) -> Llm:
     """
     bots = [GptLlm, GeminiLlm, DeepInfraLlm, HuggingFaceLlm]
 
-    if kwargs.pop("mock", False):
+    if kwargs.pop("mock", False) or model_name == "mock":
         return MockLlm()
 
     for bot in bots:

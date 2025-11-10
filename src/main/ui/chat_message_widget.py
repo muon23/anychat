@@ -390,15 +390,15 @@ class ChatMessageWidget(QWidget):
             self.ui.mainLayout.setAlignment(self.ui.messageContent, Qt.AlignmentFlag.AlignLeft)
         
         # Show/hide buttons based on role
-        # Assistant messages: only copy button
+        # Assistant messages: copy and regenerate buttons
         # User messages: fork, regenerate, copy, cut
         if role == "assistant":
             self.fork_button.setVisible(False)
-            self.regenerate_button.setVisible(False)
+            self.regenerate_button.setVisible(True)
             self.copy_button.setVisible(True)
             self.cut_button.setVisible(False)
-            # Update container size for assistant (1 button)
-            self.button_container.setFixedSize(24, 24)
+            # Update container size for assistant (2 buttons: regenerate, copy, with 2px spacing)
+            self.button_container.setFixedSize(50, 24)
             # Disconnect any existing handler and connect assistant handler
             if self._regenerate_handler is not None:
                 try:
