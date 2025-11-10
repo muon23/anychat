@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent
-from PySide6.QtGui import QResizeEvent, QKeyEvent
+from PySide6.QtGui import QResizeEvent, QKeyEvent, QWheelEvent
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
@@ -74,6 +74,9 @@ class MainWindow(QMainWindow):
 
             # Enable horizontal scrollbar as needed
             self.chatDisplay.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            
+            # Reduce scroll distance by half using event filter
+            self.chatDisplay.installEventFilter(self)
 
         else:
             print("Warning: 'chatDisplay' (QListWidget) not found.")
@@ -114,6 +117,36 @@ class MainWindow(QMainWindow):
             # If it's one of our custom chat widgets, tell it to update its size
             if isinstance(widget, ChatMessageWidget):
                 widget.update_size()
+    
+    def eventFilter(self, obj, event: QEvent):
+        """Event filter to reduce scroll distance significantly for chatDisplay."""
+        if obj == self.chatDisplay and event.type() == QEvent.Type.Wheel:
+            if isinstance(event, QWheelEvent):
+                # Get the scrollbar
+                scrollbar = self.chatDisplay.verticalScrollBar()
+                if scrollbar:
+                    # Get the original delta (angleDelta is in 1/8 degree units, typically 120*8 = 960 per click)
+                    original_delta = event.angleDelta()
+                    # Reduce to 1/4 of original delta for slower scrolling
+                    reduced_delta = original_delta.y() // 4
+                    
+                    # Qt's default behavior: scrolls 3 * singleStep pixels per 120 degrees (960 units)
+                    # So for reduced_delta, we calculate: (reduced_delta / 960) * 3 * singleStep
+                    single_step = scrollbar.singleStep()
+                    # Calculate pixels to scroll
+                    pixels_to_scroll = (reduced_delta * 3 * single_step) // 960
+                    
+                    # Scroll the scrollbar (negative because scrolling up decreases value)
+                    current_value = scrollbar.value()
+                    new_value = current_value - pixels_to_scroll
+                    
+                    # Clamp to valid range
+                    new_value = max(scrollbar.minimum(), min(new_value, scrollbar.maximum()))
+                    scrollbar.setValue(new_value)
+                    
+                    return True  # Event handled
+        
+        return super().eventFilter(obj, event)
 
     def _find_ui_children_by_name(self):
         """Finds all necessary widgets using findChild."""

@@ -1,8 +1,8 @@
-from PySide6.QtCore import Qt, QSize, Signal, QEvent, QTimer
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtCore import Qt, QSize, Signal, QEvent, QTimer, QPoint
+from PySide6.QtGui import QFontMetrics, QMouseEvent, QCursor
 from PySide6.QtWidgets import (
     QWidget, QListWidgetItem, QTextEdit, QPushButton,
-    QHBoxLayout, QApplication, QGraphicsOpacityEffect, QMenu
+    QHBoxLayout, QApplication, QGraphicsOpacityEffect, QMenu, QBoxLayout
 )
 
 from spell_check_text_edit import SpellCheckTextEdit
@@ -45,7 +45,14 @@ class ChatMessageWidget(QWidget):
         self._is_deleted = False  # Flag to track if widget is being deleted
         self._regenerate_handler = None  # Store the current regenerate button handler
         
-        # Create button container and buttons
+        # Resize state
+        self._is_resizing = False
+        self._resize_start_pos = QPoint()
+        self._resize_start_size = QSize()
+        self._custom_width = None  # Custom width set by user (None = auto)
+        self._custom_height = None  # Custom height set by user (None = auto)
+        
+        # Create button container and buttons (including resize button)
         self._create_action_buttons()
 
         # Replace messageContent with spell-checking version if it's a QTextEdit
@@ -54,6 +61,9 @@ class ChatMessageWidget(QWidget):
 
         if self.ui.messageContent:
             self.ui.messageContent.installEventFilter(self)
+        
+        # Enable mouse tracking for resize handle
+        self.setMouseTracking(True)
     
     def _create_action_buttons(self):
         """Create action buttons (fork, copy, cut, regenerate) in the lower right."""
@@ -71,6 +81,35 @@ class ChatMessageWidget(QWidget):
         button_layout = QHBoxLayout(self.button_container)
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(2)
+        
+        # Create resize button as a separate widget (will be positioned based on role)
+        self.resize_button = QPushButton("↘️", self)  # Parent is self, not button_container
+        self.resize_button.setObjectName("resizeButton")
+        self.resize_button.setToolTip("Resize bubble")
+        self.resize_button.setFixedSize(24, 24)
+        # Use opacity to make the entire button (including emoji) translucent
+        opacity_effect = QGraphicsOpacityEffect()
+        opacity_effect.setOpacity(0.5)  # 50% opacity
+        self.resize_button.setGraphicsEffect(opacity_effect)
+        self.resize_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(102, 102, 102, 0.5);
+                border-radius: 4px;
+                color: white;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.8);
+                border: 1px solid #666;
+                color: white;
+            }
+        """)
+        # Store effect reference for hover handling
+        self.resize_button._opacity_effect = opacity_effect
+        self.resize_button.pressed.connect(self._on_resize_pressed)
+        self.resize_button.released.connect(self._on_resize_released)
+        self.resize_button.hide()  # Initially hidden, shown based on role
         
         # Create buttons with text labels (we'll use simple text for now, can be replaced with icons)
         self.fork_button = QPushButton("🔀", self.button_container)
@@ -179,7 +218,8 @@ class ChatMessageWidget(QWidget):
         self.regenerate_button._opacity_effect = opacity_effect
         self.regenerate_button.installEventFilter(self)
         
-        # Add buttons to layout in order: fork, regenerate, copy, cut
+        # Add buttons to layout - resize button is separate for user messages
+        # For now, add all buttons except resize (it's separate for user messages)
         button_layout.addWidget(self.fork_button)
         button_layout.addWidget(self.regenerate_button)
         button_layout.addWidget(self.copy_button)
@@ -199,6 +239,7 @@ class ChatMessageWidget(QWidget):
         self.button_container.installEventFilter(self)
         
         # Install event filters on buttons for hover opacity changes
+        self.resize_button.installEventFilter(self)
         self.fork_button.installEventFilter(self)
         self.copy_button.installEventFilter(self)
         self.cut_button.installEventFilter(self)
@@ -250,12 +291,52 @@ class ChatMessageWidget(QWidget):
             clipboard.setText(content)
         self.cutBelowRequested.emit()
     
+    def _on_resize_pressed(self):
+        """Handle resize button press - start resizing."""
+        if not self.list_item or not self.ui.messageContent:
+            return
+        
+        self._is_resizing = True
+        # Get current mouse position
+        from PySide6.QtGui import QCursor
+        self._resize_start_pos = QCursor.pos()
+        
+        try:
+            list_widget = self.list_item.listWidget()
+            if list_widget:
+                # Get current bubble size
+                content_rect = self.ui.messageContent.geometry()
+                self._resize_start_size = QSize(content_rect.width(), content_rect.height())
+        except (RuntimeError, AttributeError):
+            self._is_resizing = False
+            return
+        
+        # Grab mouse to capture all mouse events during resize
+        self.grabMouse()
+        # Set cursor for the entire widget during resize
+        if self.role == "user":
+            self.setCursor(QCursor(Qt.CursorShape.SizeBDiagCursor))
+        else:
+            self.setCursor(QCursor(Qt.CursorShape.SizeFDiagCursor))
+    
+    def _on_resize_released(self):
+        """Handle resize button release - end resizing."""
+        if self._is_resizing:
+            self._is_resizing = False
+            self.releaseMouse()
+            # Reset cursor
+            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+    
     def enterEvent(self, event):
         """Show buttons when mouse enters the widget."""
         super().enterEvent(event)
         if self.ui.messageContent:
             self._position_buttons()
             self.button_container.show()
+            # Position resize button if it's separate (user messages)
+            if self.role == "user" and self.resize_button.isVisible():
+                self._position_resize_button()
+                self.resize_button.show()
     
     def leaveEvent(self, event):
         """Hide buttons when mouse leaves the widget."""
@@ -272,7 +353,7 @@ class ChatMessageWidget(QWidget):
     
     def _set_buttons_opacity(self, opacity: float):
         """Set opacity for all visible buttons."""
-        buttons = [self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]
+        buttons = [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]
         for button in buttons:
             if button and button.isVisible() and hasattr(button, '_opacity_effect'):
                 button._opacity_effect.setOpacity(opacity)
@@ -302,6 +383,32 @@ class ChatMessageWidget(QWidget):
         self.button_container.setGeometry(x, y, button_width, button_height)
         self.button_container.raise_()  # Ensure it's on top
         self.button_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)  # Make sure it can receive mouse events
+    
+    def _position_resize_button(self):
+        """Position the resize button at lower left for user messages."""
+        if not self.ui.messageContent or self.role != "user":
+            return
+        
+        try:
+            content_rect = self.ui.messageContent.geometry()
+            if not content_rect.isValid() or content_rect.width() <= 0 or content_rect.height() <= 0:
+                return
+            
+            button_size = 24
+            padding = 4
+            
+            # Position at lower left corner of messageContent
+            x = content_rect.left() + padding
+            y = content_rect.bottom() - button_size - padding
+            
+            # Ensure coordinates are valid
+            if x < 0 or y < 0:
+                return
+            
+            self.resize_button.setGeometry(x, y, button_size, button_size)
+            self.resize_button.raise_()  # Ensure it's on top
+        except (RuntimeError, AttributeError):
+            pass
     
     def _replace_message_content_with_spell_check(self):
         """Replace messageContent QTextEdit with SpellCheckTextEdit."""
@@ -336,13 +443,41 @@ class ChatMessageWidget(QWidget):
         except Exception as e:
             print(f"Warning: Could not replace messageContent with spell-checking version: {e}")
 
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Handle mouse move events during resize."""
+        # Handle resize drag
+        if self._is_resizing:
+            try:
+                self._handle_resize(event.globalPos())
+            except (RuntimeError, AttributeError):
+                # Widget might have been deleted
+                self._is_resizing = False
+                self.releaseMouse()
+        super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Handle mouse release to end resize."""
+        if self._is_resizing and event.button() == Qt.MouseButton.LeftButton:
+            self._is_resizing = False
+            self.releaseMouse()
+            # Reset cursor
+            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+        super().mouseReleaseEvent(event)
+    
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse press events."""
+        super().mousePressEvent(event)
+    
     def eventFilter(self, obj, event: QEvent):
+        # No longer handling resize handle events here - using mouse events instead
+        
+        # Handle events for messageContent
         if obj == self.ui.messageContent:
             if event.type() == QEvent.Type.FocusOut:
                 print("Editing finished, triggering save.")
                 self.editingFinished.emit()
             elif event.type() == QEvent.Type.Enter:
-                # Show buttons when mouse enters messageContent
+                # Show buttons and resize handle when mouse enters messageContent
                 if self.ui.messageContent:
                     self._position_buttons()
                     self.button_container.show()
@@ -362,7 +497,7 @@ class ChatMessageWidget(QWidget):
                 # Hide buttons when mouse leaves button container
                 QTimer.singleShot(100, self._check_and_hide_buttons)
         # Handle button hover events for individual buttons
-        elif obj in [self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]:
+        elif obj in [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button]:
             if event.type() == QEvent.Type.Enter:
                 # Make button solid on hover
                 if hasattr(obj, '_opacity_effect'):
@@ -381,6 +516,10 @@ class ChatMessageWidget(QWidget):
         self.role = role
         self.model = model if role == "assistant" else None  # Only store model for assistant messages
         self.ui.messageContent.setPlainText(content)
+        
+        # Reset custom size when message changes (user can resize again)
+        self._custom_width = None
+        self._custom_height = None
 
         if role == "user":
             self.ui.messageContent.setStyleSheet("background-color: #333333; color: #FFFFFF;")
@@ -389,16 +528,34 @@ class ChatMessageWidget(QWidget):
             self.ui.messageContent.setStyleSheet("background-color: #444444; color: #FFFFFF;")
             self.ui.mainLayout.setAlignment(self.ui.messageContent, Qt.AlignmentFlag.AlignLeft)
         
-        # Show/hide buttons based on role
-        # Assistant messages: copy and regenerate buttons
-        # User messages: fork, regenerate, copy, cut
+        # Show/hide buttons based on role and set order
+        # Assistant messages: regenerate, copy, resize (from left to right)
+        # User messages: resize, fork, regenerate, copy, cut (from left to right)
         if role == "assistant":
+            # Hide user-specific buttons
             self.fork_button.setVisible(False)
+            self.cut_button.setVisible(False)
+            # Show assistant buttons: regenerate, copy, resize
             self.regenerate_button.setVisible(True)
             self.copy_button.setVisible(True)
-            self.cut_button.setVisible(False)
-            # Update container size for assistant (2 buttons: regenerate, copy, with 2px spacing)
-            self.button_container.setFixedSize(50, 24)
+            self.resize_button.setVisible(True)
+            self.resize_button.setText("↘️")
+            # Reorder buttons: regenerate, copy, resize
+            layout = self.button_container.layout()
+            if layout and isinstance(layout, QBoxLayout):
+                # Remove resize if it was added before (shouldn't be, but just in case)
+                try:
+                    layout.removeWidget(self.resize_button)
+                except:
+                    pass
+                # Reorder buttons: regenerate, copy, resize
+                layout.removeWidget(self.regenerate_button)
+                layout.removeWidget(self.copy_button)
+                layout.insertWidget(0, self.regenerate_button)
+                layout.insertWidget(1, self.copy_button)
+                layout.insertWidget(2, self.resize_button)
+            # Update container size for assistant (3 buttons: regenerate, copy, resize, with 2px spacing)
+            self.button_container.setFixedSize(74, 24)
             # Disconnect any existing handler and connect assistant handler
             if self._regenerate_handler is not None:
                 try:
@@ -409,12 +566,34 @@ class ChatMessageWidget(QWidget):
             self._regenerate_handler = self.regenerateRequested.emit
             self.regenerate_button.clicked.connect(self._regenerate_handler)
         elif role == "user":
-            self.fork_button.setVisible(True)
-            self.regenerate_button.setVisible(True)
-            self.copy_button.setVisible(True)
-            self.cut_button.setVisible(True)
-            # Update container size for user (4 buttons)
+            # Show all user buttons: resize (separate, lower left), fork, regenerate, copy, cut (lower right)
+            self.resize_button.setVisible(True)
+            self.resize_button.setText("↙️")
+            # Remove resize button from container layout for user messages
+            layout = self.button_container.layout()
+            if layout and isinstance(layout, QBoxLayout):
+                try:
+                    layout.removeWidget(self.resize_button)
+                except:
+                    pass
+                # Show other buttons: fork, regenerate, copy, cut
+                self.fork_button.setVisible(True)
+                self.regenerate_button.setVisible(True)
+                self.copy_button.setVisible(True)
+                self.cut_button.setVisible(True)
+                # Reorder buttons: fork, regenerate, copy, cut
+                layout.removeWidget(self.fork_button)
+                layout.removeWidget(self.regenerate_button)
+                layout.removeWidget(self.copy_button)
+                layout.removeWidget(self.cut_button)
+                layout.insertWidget(0, self.fork_button)
+                layout.insertWidget(1, self.regenerate_button)
+                layout.insertWidget(2, self.copy_button)
+                layout.insertWidget(3, self.cut_button)
+            # Update container size for user (4 buttons: fork, regenerate, copy, cut, with 2px spacing)
             self.button_container.setFixedSize(102, 24)
+            # Position resize button separately at lower left
+            QTimer.singleShot(50, self._position_resize_button)
             # Disconnect any existing handler and connect user handler
             if self._regenerate_handler is not None:
                 try:
@@ -426,6 +605,7 @@ class ChatMessageWidget(QWidget):
             self.regenerate_button.clicked.connect(self._regenerate_handler)
         else:
             # For thinking or other roles, hide all buttons
+            self.resize_button.setVisible(False)
             self.fork_button.setVisible(False)
             self.regenerate_button.setVisible(False)
             self.copy_button.setVisible(False)
@@ -452,6 +632,7 @@ class ChatMessageWidget(QWidget):
     def update_size(self):
         """
         Calculates and sets the item's size hint. This is the simple, correct logic.
+        Now supports custom width/height from resizing.
         """
         if not self.ui.messageContent or not self.list_item:
             return
@@ -472,28 +653,85 @@ class ChatMessageWidget(QWidget):
         max_bubble_width = int(available_width * self.MAX_BUBBLE_RATIO)
         max_bubble_width = max(max_bubble_width, self.MIN_BUBBLE_WIDTH)
 
-        # 2. Get ideal text width (unwrapped)
-        doc = self.ui.messageContent.document()
-        metrics = QFontMetrics(doc.defaultFont())
-        ideal_width = metrics.boundingRect(self.ui.messageContent.toPlainText()).width() + (2 * self.BUBBLE_PADDING)
+        # 2. Determine final bubble width (use custom if set, otherwise calculate)
+        if self._custom_width is not None:
+            final_bubble_width = max(self.MIN_BUBBLE_WIDTH, min(self._custom_width, max_bubble_width))
+        else:
+            # Get ideal text width (unwrapped)
+            doc = self.ui.messageContent.document()
+            metrics = QFontMetrics(doc.defaultFont())
+            ideal_width = metrics.boundingRect(self.ui.messageContent.toPlainText()).width() + (2 * self.BUBBLE_PADDING)
+            final_bubble_width = min(ideal_width, max_bubble_width)
+            final_bubble_width = max(final_bubble_width, self.MIN_BUBBLE_WIDTH)
 
-        # 3. Determine final bubble width
-        final_bubble_width = min(ideal_width, max_bubble_width)
-        final_bubble_width = max(final_bubble_width, self.MIN_BUBBLE_WIDTH)
-
-        # 4. Calculate height based on *that* width
+        # 3. Calculate height (use custom if set, otherwise calculate)
         text_wrap_width = final_bubble_width - (2 * self.BUBBLE_PADDING)
+        doc = self.ui.messageContent.document()
         doc.setTextWidth(text_wrap_width)
-        final_bubble_height = doc.size().height() + (2 * self.BUBBLE_PADDING)
+        
+        if self._custom_height is not None:
+            final_bubble_height = max(doc.size().height() + (2 * self.BUBBLE_PADDING), self._custom_height)
+        else:
+            final_bubble_height = doc.size().height() + (2 * self.BUBBLE_PADDING)
 
-        # 5. Set the bubble's constraints (this was the checkpoint logic)
+        # 4. Set the bubble's constraints
         self.ui.messageContent.setMinimumWidth(int(final_bubble_width))
         self.ui.messageContent.setMaximumWidth(int(final_bubble_width))
         self.ui.messageContent.setFixedHeight(int(final_bubble_height))
 
-        # 6. Set the *row's* size hint
+        # 5. Set the *row's* size hint (this pushes down subsequent messages)
         total_height = final_bubble_height + layout_margins.top() + layout_margins.bottom()
         self.list_item.setSizeHint(QSize(viewport_width, int(total_height)))
         
-        # 7. Update button positions after size change
+        # 6. Update button positions after size change
         self._position_buttons()
+        # Update resize button position if it's separate (user messages)
+        if self.role == "user" and hasattr(self, 'resize_button') and self.resize_button.isVisible():
+            self._position_resize_button()
+    
+    def _handle_resize(self, global_pos: QPoint):
+        """Handle resize drag - update widget size based on mouse movement."""
+        if not self.list_item or not self.ui.messageContent:
+            return
+        
+        list_widget = self.list_item.listWidget()
+        if not list_widget:
+            return
+        
+        # Calculate delta from start position
+        delta = global_pos - self._resize_start_pos
+        
+        # Get viewport width for max width calculation
+        viewport_width = list_widget.viewport().width()
+        layout_margins = self.ui.mainLayout.contentsMargins()
+        total_layout_margin = layout_margins.left() + layout_margins.right()
+        available_width = viewport_width - total_layout_margin
+        max_bubble_width = int(available_width * self.MAX_BUBBLE_RATIO)
+        max_bubble_width = max(max_bubble_width, self.MIN_BUBBLE_WIDTH)
+        
+        # Calculate new size based on role
+        if self.role == "user":
+            # User messages: resize leftward (negative delta.x) and downward (positive delta.y)
+            new_width = self._resize_start_size.width() - delta.x()
+            new_height = self._resize_start_size.height() + delta.y()
+        else:
+            # Assistant messages: resize rightward (positive delta.x) and downward (positive delta.y)
+            new_width = self._resize_start_size.width() + delta.x()
+            new_height = self._resize_start_size.height() + delta.y()
+        
+        # Clamp width to valid range
+        new_width = max(self.MIN_BUBBLE_WIDTH, min(new_width, max_bubble_width))
+        # Clamp height to minimum (at least enough for text)
+        doc = self.ui.messageContent.document()
+        min_height = doc.size().height() + (2 * self.BUBBLE_PADDING)
+        new_height = max(min_height, new_height)
+        
+        # Store custom size
+        self._custom_width = int(new_width)
+        self._custom_height = int(new_height)
+        
+        # Update size (this will update text wrapping and push down subsequent messages)
+        self.update_size()
+        
+        # Force immediate update
+        QApplication.processEvents()
