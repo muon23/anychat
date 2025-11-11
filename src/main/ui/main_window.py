@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent
-from PySide6.QtGui import QResizeEvent, QKeyEvent, QWheelEvent
+from PySide6.QtGui import QResizeEvent, QKeyEvent, QWheelEvent, QFontMetrics, QShortcut, QKeySequence
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
@@ -75,9 +75,31 @@ class MainWindow(QMainWindow):
 
             # Enable horizontal scrollbar as needed
             self.chatDisplay.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            
-            # Reduce scroll distance by half using event filter
+
+            # Set smooth scrolling - one line at a time
+            scrollbar = self.chatDisplay.verticalScrollBar()
+            if scrollbar:
+                # Get font metrics to calculate line height
+                font = self.chatDisplay.font()
+                metrics = QFontMetrics(font)
+                line_height = metrics.height()
+                # Set single step to one line height for smooth scrolling
+                scrollbar.setSingleStep(line_height)
+                # Enable smooth scrolling
+                scrollbar.setPageStep(viewport_height if (viewport_height := self.chatDisplay.viewport().height()) > 0 else line_height * 10)
+
+            # Install event filter for smooth scrolling and arrow key navigation
             self.chatDisplay.installEventFilter(self)
+            # Enable keyboard focus for arrow key navigation
+            self.chatDisplay.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            
+            # Create QShortcut for PageUp and PageDown for reliable key handling
+            # On Mac, these are Fn+Up and Fn+Down
+            self.shortcut_prev_user = QShortcut(QKeySequence(Qt.Key.Key_PageUp), self)
+            self.shortcut_prev_user.activated.connect(lambda: self._jump_to_user_message(direction=-1))
+            
+            self.shortcut_next_user = QShortcut(QKeySequence(Qt.Key.Key_PageDown), self)
+            self.shortcut_next_user.activated.connect(lambda: self._jump_to_user_message(direction=1))
 
         else:
             print("Warning: 'chatDisplay' (QListWidget) not found.")
@@ -119,35 +141,180 @@ class MainWindow(QMainWindow):
             if isinstance(widget, ChatMessageWidget):
                 widget.update_size()
     
+    def keyPressEvent(self, event: QKeyEvent):
+        """Handle key press events for PageUp/PageDown key navigation."""
+        # Handle PageUp/PageDown keys for navigating user messages
+        if self.chatDisplay and self.chatDisplay.isVisible():
+            if event.key() == Qt.Key.Key_PageUp:
+                # Jump to previous user message from currently focused bubble
+                self._jump_to_user_message(direction=-1)
+                return
+            elif event.key() == Qt.Key.Key_PageDown:
+                # Jump to next user message from currently focused bubble
+                self._jump_to_user_message(direction=1)
+                return
+        
+        super().keyPressEvent(event)
+    
     def eventFilter(self, obj, event: QEvent):
-        """Event filter to reduce scroll distance significantly for chatDisplay."""
-        if obj == self.chatDisplay and event.type() == QEvent.Type.Wheel:
-            if isinstance(event, QWheelEvent):
-                # Get the scrollbar
-                scrollbar = self.chatDisplay.verticalScrollBar()
-                if scrollbar:
-                    # Get the original delta (angleDelta is in 1/8 degree units, typically 120*8 = 960 per click)
-                    original_delta = event.angleDelta()
-                    # Reduce to 1/4 of original delta for slower scrolling
-                    reduced_delta = original_delta.y() // 4
-                    
-                    # Qt's default behavior: scrolls 3 * singleStep pixels per 120 degrees (960 units)
-                    # So for reduced_delta, we calculate: (reduced_delta / 960) * 3 * singleStep
-                    single_step = scrollbar.singleStep()
-                    # Calculate pixels to scroll
-                    pixels_to_scroll = (reduced_delta * 3 * single_step) // 960
-                    
-                    # Scroll the scrollbar (negative because scrolling up decreases value)
-                    current_value = scrollbar.value()
-                    new_value = current_value - pixels_to_scroll
-                    
-                    # Clamp to valid range
-                    new_value = max(scrollbar.minimum(), min(new_value, scrollbar.maximum()))
-                    scrollbar.setValue(new_value)
-                    
-                    return True  # Event handled
+        """Event filter for chatDisplay: smooth scrolling."""
+        if obj == self.chatDisplay:
+            if event.type() == QEvent.Type.Wheel:
+                if isinstance(event, QWheelEvent):
+                    # Get the scrollbar
+                    scrollbar = self.chatDisplay.verticalScrollBar()
+                    if scrollbar:
+                        # Use singleStep for smooth line-by-line scrolling
+                        single_step = scrollbar.singleStep()
+                        
+                        # Get the wheel delta (angleDelta is in 1/8 degree units, typically 120*8 = 960 per click)
+                        delta = event.angleDelta().y()
+                        
+                        # For smooth scrolling, scroll proportionally to the delta
+                        # Each 960 units = one "click" = one line
+                        # For smaller deltas, scroll proportionally (e.g., 480 units = 0.5 lines)
+                        lines_to_scroll = delta / 960.0
+                        
+                        # Scroll by the calculated number of lines (can be fractional for smoothness)
+                        current_value = scrollbar.value()
+                        pixels_to_scroll = int(lines_to_scroll * single_step)
+                        new_value = current_value - pixels_to_scroll
+                        
+                        # Clamp to valid range
+                        new_value = max(scrollbar.minimum(), min(new_value, scrollbar.maximum()))
+                        scrollbar.setValue(new_value)
+                        
+                        return True  # Event handled
+            
+            elif event.type() == QEvent.Type.KeyPress:
+                if isinstance(event, QKeyEvent):
+                    if event.key() == Qt.Key.Key_Up:
+                        # Jump to previous user message from currently focused bubble
+                        self._jump_to_user_message(direction=-1)
+                        return True
+                    elif event.key() == Qt.Key.Key_Down:
+                        # Jump to next user message from currently focused bubble
+                        self._jump_to_user_message(direction=1)
+                        return True
         
         return super().eventFilter(obj, event)
+    
+    def _jump_to_user_message(self, direction: int):
+        """Jump to the previous (direction=-1) or next (direction=1) user message bubble from the currently focused one."""
+        if not self.chatDisplay:
+            return
+        
+        # Find the currently focused/selected item
+        # First try to find an item that has a focused widget
+        current_item = None
+        current_index = -1
+        
+        # Check if any item has a focused widget
+        for i in range(self.chatDisplay.count()):
+            item = self.chatDisplay.item(i)
+            if item:
+                widget = self.chatDisplay.itemWidget(item)
+                if isinstance(widget, ChatMessageWidget):
+                    # Check if the widget or its messageContent has focus
+                    if widget.hasFocus() or (hasattr(widget, 'ui') and widget.ui.messageContent and widget.ui.messageContent.hasFocus()):
+                        current_item = item
+                        current_index = i
+                        break
+        
+        # If no focused item found, try to find the item at the top of the viewport
+        if current_item is None:
+            scrollbar = self.chatDisplay.verticalScrollBar()
+            if scrollbar:
+                current_scroll = scrollbar.value()
+                # Find the first visible item
+                for i in range(self.chatDisplay.count()):
+                    item = self.chatDisplay.item(i)
+                    if item:
+                        item_rect = self.chatDisplay.visualItemRect(item)
+                        if item_rect.top() >= current_scroll - 10:  # Allow small tolerance
+                            current_item = item
+                            current_index = i
+                            break
+        
+        # Find all user message items with their indices
+        user_items = []
+        for i in range(self.chatDisplay.count()):
+            item = self.chatDisplay.item(i)
+            if item:
+                widget = self.chatDisplay.itemWidget(item)
+                if isinstance(widget, ChatMessageWidget) and widget.role == "user":
+                    user_items.append((i, item))
+        
+        if not user_items:
+            return
+        
+        # Find the target user message based on direction and current position
+        target_item = None
+        
+        if current_index >= 0:
+            # Find user messages relative to current position
+            if direction < 0:  # Up - find previous user message
+                # Find the last user message before current_index
+                for i, item in reversed(user_items):
+                    if i < current_index:
+                        target_item = item
+                        break
+                # If no previous user message, stay at current (already at topmost)
+                if target_item is None:
+                    return
+            else:  # Down - find next user message
+                # Find the first user message after current_index
+                for i, item in user_items:
+                    if i > current_index:
+                        target_item = item
+                        break
+                # If no next user message, check if we're at the last message
+                if target_item is None:
+                    # Check if current item is the last message (user or assistant)
+                    if current_index >= self.chatDisplay.count() - 1:
+                        return  # Already at last message
+                    # Otherwise, go to the last user message
+                    target_item = user_items[-1][1]
+        else:
+            # No current item found, use scroll-based navigation as fallback
+            scrollbar = self.chatDisplay.verticalScrollBar()
+            if scrollbar:
+                current_scroll = scrollbar.value()
+                viewport_height = self.chatDisplay.viewport().height()
+                current_bottom = current_scroll + viewport_height
+                
+                if direction < 0:  # Up
+                    # Find the last user message above viewport
+                    for i, item in reversed(user_items):
+                        item_rect = self.chatDisplay.visualItemRect(item)
+                        if item_rect.top() < current_scroll:
+                            target_item = item
+                            break
+                    if target_item is None:
+                        target_item = user_items[0][1]  # First user message
+                else:  # Down
+                    # Find the first user message below viewport
+                    for i, item in user_items:
+                        item_rect = self.chatDisplay.visualItemRect(item)
+                        if item_rect.top() > current_bottom:
+                            target_item = item
+                            break
+                    if target_item is None:
+                        # Check if we're at the last message
+                        last_item = self.chatDisplay.item(self.chatDisplay.count() - 1)
+                        if last_item:
+                            last_rect = self.chatDisplay.visualItemRect(last_item)
+                            if last_rect.bottom() <= current_bottom:
+                                return  # Already showing last message
+                        target_item = user_items[-1][1]  # Last user message
+        
+        # Scroll to the target item, positioning it at the top
+        if target_item:
+            self.chatDisplay.scrollToItem(target_item, self.chatDisplay.ScrollHint.PositionAtTop)
+            # Set focus to the target item's widget for visual feedback
+            widget = self.chatDisplay.itemWidget(target_item)
+            if isinstance(widget, ChatMessageWidget):
+                widget.setFocus()
 
     def _find_ui_children_by_name(self):
         """Finds all necessary widgets using findChild."""
