@@ -42,7 +42,8 @@ class ChatHistoryManager:
         file_item = QTreeWidgetItem(parent, [display_name])
         file_item.setIcon(0, icons["file"])
         file_item.setData(0, PathRole, str(path))
-        file_item.setFlags(item_flags)
+        # Enable dragging for file items
+        file_item.setFlags(item_flags | Qt.ItemFlag.ItemIsDragEnabled)
         file_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
         return file_item
 
@@ -126,7 +127,8 @@ class ChatHistoryManager:
                     list_item = QListWidgetItem(display_name)
                     list_item.setIcon(icons["file"])
                     list_item.setData(PathRole, str(path))
-                    list_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                    # Enable dragging for list items
+                    list_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
                     list_widget.addItem(list_item)
         except OSError as e:
             print(f"Error reading history root {self.history_root}: {e}")

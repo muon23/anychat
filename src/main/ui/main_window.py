@@ -2,8 +2,9 @@ import logging
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent
-from PySide6.QtGui import QResizeEvent, QKeyEvent, QWheelEvent, QFontMetrics, QShortcut, QKeySequence
+from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent, QMimeData
+from PySide6.QtGui import QResizeEvent, QKeyEvent, QWheelEvent, QFontMetrics, QShortcut, QKeySequence, QDragEnterEvent, \
+    QDragMoveEvent, QDropEvent
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
@@ -157,7 +158,23 @@ class MainWindow(QMainWindow):
         super().keyPressEvent(event)
     
     def eventFilter(self, obj, event: QEvent):
-        """Event filter for chatDisplay: smooth scrolling."""
+        """Event filter for chatDisplay: smooth scrolling, and drag-and-drop for projects tree."""
+        # Handle drag-and-drop events for projects tree
+        if obj == self.projectsTree:
+            if event.type() == QEvent.Type.DragEnter:
+                if isinstance(event, QDragEnterEvent):
+                    self._projects_tree_drag_enter_event(event)
+                    return True
+            elif event.type() == QEvent.Type.DragMove:
+                if isinstance(event, QDragMoveEvent):
+                    self._projects_tree_drag_move_event(event)
+                    return True
+            elif event.type() == QEvent.Type.Drop:
+                if isinstance(event, QDropEvent):
+                    self._projects_tree_drop_event(event)
+                    return True
+        
+        # Handle smooth scrolling for chatDisplay
         if obj == self.chatDisplay:
             if event.type() == QEvent.Type.Wheel:
                 if isinstance(event, QWheelEvent):
@@ -416,6 +433,25 @@ class MainWindow(QMainWindow):
             print("Projects tree context menu connected.")
             self.projectsTree.currentItemChanged.connect(self._on_projects_item_selected)
             self.projectsTree.itemChanged.connect(self._on_projects_item_edited)
+            # Enable drag-and-drop for projects tree
+            self.projectsTree.setDragDropMode(QTreeWidget.DragDropMode.DragDrop)
+            self.projectsTree.setDefaultDropAction(Qt.DropAction.MoveAction)
+            # Override drag and drop events using lambdas
+            def custom_drag_enter(event):
+                self._projects_tree_drag_enter_event(event)
+            def custom_drag_move(event):
+                self._projects_tree_drag_move_event(event)
+            def custom_drop(event):
+                self._projects_tree_drop_event(event)
+            def custom_start_drag(supported_actions):
+                return self._projects_tree_start_drag(supported_actions)
+            
+            self.projectsTree.dragEnterEvent = custom_drag_enter
+            self.projectsTree.dragMoveEvent = custom_drag_move
+            self.projectsTree.dropEvent = custom_drop
+            self.projectsTree.startDrag = custom_start_drag
+            # Install event filter for drag events
+            self.projectsTree.installEventFilter(self)
             print("Projects tree item selection connected.")
         else:
             print("Warning: 'projectsTree' not found.")
@@ -425,6 +461,25 @@ class MainWindow(QMainWindow):
             print("Chats list context menu connected.")
             self.chatsList.currentItemChanged.connect(self._on_chats_item_selected)
             self.chatsList.itemChanged.connect(self._on_chats_item_edited)
+            # Enable drag-and-drop for chats list
+            self.chatsList.setDragEnabled(True)
+            self.chatsList.setAcceptDrops(True)
+            self.chatsList.setDefaultDropAction(Qt.DropAction.MoveAction)
+            # Override startDrag method using a lambda that captures self
+            original_start_drag = self.chatsList.startDrag
+            def custom_start_drag(supported_actions):
+                return self._chats_list_start_drag(supported_actions)
+            self.chatsList.startDrag = custom_start_drag
+            # Override drag and drop events for accepting drops
+            def custom_drag_enter(event):
+                self._chats_list_drag_enter_event(event)
+            def custom_drag_move(event):
+                self._chats_list_drag_move_event(event)
+            def custom_drop(event):
+                self._chats_list_drop_event(event)
+            self.chatsList.dragEnterEvent = custom_drag_enter
+            self.chatsList.dragMoveEvent = custom_drag_move
+            self.chatsList.dropEvent = custom_drop
             print("Chats list item selection connected.")
         else:
             print("Warning: 'chatsList' not found.")
@@ -1851,6 +1906,366 @@ class MainWindow(QMainWindow):
                 self._handle_regenerate_user_message(sender)
         except (RuntimeError, AttributeError):
             return
+    
+    def _chats_list_start_drag(self, supported_actions):
+        """Override startDrag for chatsList to provide file path in mime data and custom drag pixmap."""
+        selected_items = self.chatsList.selectedItems()
+        if not selected_items:
+            # Call original startDrag if no selection
+            QListWidget.startDrag(self.chatsList, supported_actions)
+            return
+        
+        item = selected_items[0]
+        file_path_str = item.data(PathRole)
+        if not file_path_str:
+            QListWidget.startDrag(self.chatsList, supported_actions)
+            return
+        
+        # Get display name and icon
+        display_name = item.text()
+        icon = item.icon()
+        
+        # Create custom drag pixmap
+        from PySide6.QtGui import QDrag, QPixmap, QPainter
+
+        # Get font from the list widget
+        font = self.chatsList.font()
+        font_metrics = QFontMetrics(font)
+        
+        # Calculate size needed
+        icon_size = 16  # Standard icon size for drag
+        text_width = font_metrics.horizontalAdvance(display_name)
+        text_height = font_metrics.height()
+        padding = 4
+        total_width = icon_size + padding + text_width + padding * 2
+        total_height = max(icon_size, text_height) + padding * 2
+        
+        # Create pixmap
+        pixmap = QPixmap(total_width, total_height)
+        pixmap.fill(Qt.GlobalColor.transparent)  # Transparent background
+        
+        # Draw icon and text
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(font)
+        
+        # Draw icon
+        if not icon.isNull():
+            icon_pixmap = icon.pixmap(icon_size, icon_size)
+            painter.drawPixmap(padding, (total_height - icon_size) // 2, icon_pixmap)
+        
+        # Draw text in white color
+        painter.setPen(Qt.GlobalColor.white)
+        text_x = padding + icon_size + padding
+        text_y = (total_height + font_metrics.ascent() - font_metrics.descent()) // 2
+        painter.drawText(text_x, text_y, display_name)
+        painter.end()
+        
+        # Create mime data with file path
+        mime_data = QMimeData()
+        mime_data.setText(file_path_str)
+        
+        # Create drag object
+        drag = QDrag(self.chatsList)
+        drag.setMimeData(mime_data)
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(QPoint(padding, padding))  # Set hot spot to top-left of icon
+        drag.exec(supported_actions, Qt.DropAction.MoveAction)
+    
+    def _projects_tree_start_drag(self, supported_actions):
+        """Override startDrag for projectsTree to provide file path in mime data and custom drag pixmap (for chat files only)."""
+        selected_items = self.projectsTree.selectedItems()
+        if not selected_items:
+            # Call original startDrag if no selection
+            QTreeWidget.startDrag(self.projectsTree, supported_actions)
+            return
+        
+        item = selected_items[0]
+        file_path_str = item.data(0, PathRole)
+        if not file_path_str:
+            QTreeWidget.startDrag(self.projectsTree, supported_actions)
+            return
+        
+        file_path = Path(file_path_str)
+        # Only allow dragging chat files, not folders
+        if not file_path.is_file() or file_path.suffix != '.json':
+            # For folders, use default behavior (no drag)
+            return
+        
+        # Get display name and icon
+        display_name = item.text(0)
+        icon = item.icon(0)
+        
+        # Create custom drag pixmap
+        from PySide6.QtGui import QDrag, QPixmap, QPainter
+
+        # Get font from the tree widget
+        font = self.projectsTree.font()
+        font_metrics = QFontMetrics(font)
+        
+        # Calculate size needed
+        icon_size = 16  # Standard icon size for drag
+        text_width = font_metrics.horizontalAdvance(display_name)
+        text_height = font_metrics.height()
+        padding = 4
+        total_width = icon_size + padding + text_width + padding * 2
+        total_height = max(icon_size, text_height) + padding * 2
+        
+        # Create pixmap
+        pixmap = QPixmap(total_width, total_height)
+        pixmap.fill(Qt.GlobalColor.transparent)  # Transparent background
+        
+        # Draw icon and text
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(font)
+        
+        # Draw icon
+        if not icon.isNull():
+            icon_pixmap = icon.pixmap(icon_size, icon_size)
+            painter.drawPixmap(padding, (total_height - icon_size) // 2, icon_pixmap)
+        
+        # Draw text in white color
+        painter.setPen(Qt.GlobalColor.white)
+        text_x = padding + icon_size + padding
+        text_y = (total_height + font_metrics.ascent() - font_metrics.descent()) // 2
+        painter.drawText(text_x, text_y, display_name)
+        painter.end()
+        
+        # Create mime data with file path
+        mime_data = QMimeData()
+        mime_data.setText(file_path_str)
+        
+        # Create drag object
+        drag = QDrag(self.projectsTree)
+        drag.setMimeData(mime_data)
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(QPoint(padding, padding))  # Set hot spot to top-left of icon
+        drag.exec(supported_actions, Qt.DropAction.MoveAction)
+    
+    def _chats_list_drag_enter_event(self, event: QDragEnterEvent):
+        """Handle drag enter event for chats list."""
+        if event.mimeData().hasText():
+            # Check if the drag is from projectsTree (allow moving from projects to chats)
+            source = event.source()
+            if source == self.projectsTree:
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+        else:
+            event.ignore()
+    
+    def _chats_list_drag_move_event(self, event: QDragMoveEvent):
+        """Handle drag move event for chats list."""
+        if event.mimeData().hasText():
+            source = event.source()
+            if source == self.projectsTree:
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+        else:
+            event.ignore()
+    
+    def _chats_list_drop_event(self, event: QDropEvent):
+        """Handle drop event for chats list - move chat files from projects to top-level."""
+        if not event.mimeData().hasText():
+            event.ignore()
+            return
+        
+        source = event.source()
+        if source != self.projectsTree:
+            event.ignore()
+            return
+        
+        # Get the source file path from mime data
+        source_path_str = event.mimeData().text()
+        if not source_path_str:
+            event.ignore()
+            return
+        
+        source_path = Path(source_path_str)
+        if not source_path.exists() or not source_path.is_file():
+            event.ignore()
+            return
+        
+        # Target is always the history root (top-level)
+        target_dir = self.chat_history_manager.history_root
+        
+        # Don't move if source and target are the same
+        if source_path.parent == target_dir:
+            event.ignore()
+            return
+        
+        # Move the file
+        try:
+            target_path = target_dir / source_path.name
+            if target_path.exists():
+                QMessageBox.warning(self, "Move Error", f"A file with this name already exists in the target location.")
+                event.ignore()
+                return
+            
+            # Save current chat if it's the one being moved
+            if self.current_chat_file_path == source_path:
+                self._save_current_chat()
+            
+            # Move the file
+            import shutil
+            shutil.move(str(source_path), str(target_path))
+            
+            # Update current_chat_file_path if it was the moved file
+            if self.current_chat_file_path == source_path:
+                self.current_chat_file_path = target_path
+            
+            # Reload the UI
+            self._load_chat_history()
+            
+            # Select the moved item in the chats list
+            for i in range(self.chatsList.count()):
+                item = self.chatsList.item(i)
+                if item and item.data(PathRole) == str(target_path):
+                    self.chatsList.setCurrentItem(item)
+                    self.chatsList.scrollToItem(item)
+                    break
+            
+            event.acceptProposedAction()
+        except Exception as e:
+            QMessageBox.warning(self, "Move Error", f"Could not move file: {e}")
+            event.ignore()
+    
+    def _projects_tree_drag_enter_event(self, event: QDragEnterEvent):
+        """Handle drag enter event for projects tree."""
+        if event.mimeData().hasText():
+            # Check if the drag is from chatsList or projectsTree
+            source = event.source()
+            if source == self.chatsList or source == self.projectsTree:
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+        else:
+            event.ignore()
+    
+    def _projects_tree_drag_move_event(self, event: QDragMoveEvent):
+        """Handle drag move event for projects tree."""
+        if event.mimeData().hasText():
+            source = event.source()
+            if source == self.chatsList or source == self.projectsTree:
+                # Check if dropping on a valid target (project folder or tree root)
+                item = self.projectsTree.itemAt(event.position().toPoint())
+                if item:
+                    # Check if it's a folder (project) or file (chat)
+                    item_path_str = item.data(0, PathRole)
+                    if item_path_str:
+                        item_path = Path(item_path_str)
+                        if item_path.is_dir():
+                            # Dropping on a project folder - allow
+                            event.acceptProposedAction()
+                            return
+                # Allow dropping on tree root (empty area)
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+        else:
+            event.ignore()
+    
+    def _projects_tree_drop_event(self, event: QDropEvent):
+        """Handle drop event for projects tree - move chat files."""
+        if not event.mimeData().hasText():
+            event.ignore()
+            return
+        
+        source = event.source()
+        if source != self.chatsList and source != self.projectsTree:
+            event.ignore()
+            return
+        
+        # Get the source file path from mime data
+        source_path_str = event.mimeData().text()
+        if not source_path_str:
+            event.ignore()
+            return
+        
+        source_path = Path(source_path_str)
+        if not source_path.exists() or not source_path.is_file():
+            event.ignore()
+            return
+        
+        # Get the target (where to drop)
+        item = self.projectsTree.itemAt(event.position().toPoint())
+        target_dir = self.chat_history_manager.history_root  # Default to root
+        
+        if item:
+            # Check if dropping on a folder (project) or file (chat)
+            item_path_str = item.data(0, PathRole)
+            if item_path_str:
+                item_path = Path(item_path_str)
+                if item_path.is_dir():
+                    # Dropping on a project folder
+                    target_dir = item_path
+                elif item_path.is_file():
+                    # Dropping on a chat file - use its parent directory
+                    target_dir = item_path.parent
+        # If item is None, dropping on tree root, target_dir is already set to history_root
+        
+        # Don't move if source and target are the same
+        if source_path.parent == target_dir:
+            event.ignore()
+            return
+        
+        # Move the file
+        try:
+            target_path = target_dir / source_path.name
+            if target_path.exists():
+                QMessageBox.warning(self, "Move Error", f"A file with this name already exists in the target location.")
+                event.ignore()
+                return
+            
+            # Save current chat if it's the one being moved
+            if self.current_chat_file_path == source_path:
+                self._save_current_chat()
+            
+            # Move the file
+            import shutil
+            shutil.move(str(source_path), str(target_path))
+            
+            # Update current_chat_file_path if it was the moved file
+            if self.current_chat_file_path == source_path:
+                self.current_chat_file_path = target_path
+            
+            # Reload the UI
+            self._load_chat_history()
+            
+            # Select the moved item in the projects tree
+            self._select_item_by_path(target_path)
+            
+            event.acceptProposedAction()
+        except Exception as e:
+            QMessageBox.warning(self, "Move Error", f"Could not move file: {e}")
+            event.ignore()
+    
+    def _select_item_by_path(self, file_path: Path):
+        """Select an item in the projects tree by its file path."""
+        def find_item_recursive(item: QTreeWidgetItem, target_path: Path) -> QTreeWidgetItem | None:
+            item_path_str = item.data(0, PathRole)
+            if item_path_str:
+                item_path = Path(item_path_str)
+                if item_path == target_path:
+                    return item
+            # Check children
+            for i in range(item.childCount()):
+                child = item.child(i)
+                found = find_item_recursive(child, target_path)
+                if found:
+                    return found
+            return None
+        
+        # Search through all top-level items
+        for i in range(self.projectsTree.topLevelItemCount()):
+            top_item = self.projectsTree.topLevelItem(i)
+            found = find_item_recursive(top_item, file_path)
+            if found:
+                self.projectsTree.setCurrentItem(found)
+                self.projectsTree.scrollToItem(found)
+                break
     
 
 
