@@ -19,9 +19,9 @@ from config_manager import ConfigManager
 from key_manager import KeyManager
 from keys_dialog import KeysDialog
 from llm_service import LLMService
+from refine_dialog import RefineDialog
 from spell_check_text_edit import SpellCheckTextEdit
 from system_message_dialog import SystemMessageDialog
-from refine_dialog import RefineDialog
 
 
 class MainWindow(QMainWindow):
@@ -356,6 +356,9 @@ class MainWindow(QMainWindow):
             # Replace messageInput with spell-checking version
             if self.messageInput:
                 self._replace_with_spell_check(self.messageInput, "messageInput")
+            
+            # Configure input container layout after messageInput is replaced
+            self._configure_input_container_layout()
 
             if self.projectsTree:
                 self.projectsTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -381,6 +384,9 @@ class MainWindow(QMainWindow):
             # Replace messageInput with spell-checking version
             if self.messageInput:
                 self._replace_with_spell_check(self.messageInput, "messageInput")
+            
+            # Configure input container layout after messageInput is replaced
+            self._configure_input_container_layout()
 
             if self.projectsTree:
                 self.projectsTree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -481,6 +487,54 @@ class MainWindow(QMainWindow):
                     print(f"Replaced {object_name} with spell-checking version.")
         except Exception as e:
             print(f"Warning: Could not replace {object_name} with spell-checking version: {e}")
+
+    def _configure_input_container_layout(self):
+        """Configure inputContainer layout so only messageInput resizes, bottomControlsLayout stays fixed."""
+        from PySide6.QtWidgets import QWidget, QVBoxLayout
+
+        input_container = self.findChild(QWidget, "inputContainer")
+        if not input_container:
+            return
+        
+        input_container_layout = input_container.layout()
+        if not input_container_layout or not isinstance(input_container_layout, QVBoxLayout):
+            return
+        
+        # The layout should have 2 items: messageInput (index 0) and bottomControlsLayout (index 1)
+        # Set stretch factor: messageInput = 1 (can expand/contract), bottomControlsLayout = 0 (fixed)
+        if input_container_layout.count() >= 2:
+            # Get messageInput widget (index 0)
+            message_input_item = input_container_layout.itemAt(0)
+            if message_input_item:
+                message_input_widget = message_input_item.widget()
+                if message_input_widget:
+                    # Remove maximum height constraint so messageInput can expand
+                    message_input_widget.setMaximumHeight(16777215)  # Qt's maximum value
+                    # Set size policy to allow vertical expansion
+                    from PySide6.QtWidgets import QSizePolicy
+                    size_policy = message_input_widget.sizePolicy()
+                    size_policy.setVerticalPolicy(QSizePolicy.Policy.Expanding)
+                    message_input_widget.setSizePolicy(size_policy)
+                    # Set stretch factor > 0 so messageInput can expand/contract
+                    input_container_layout.setStretchFactor(message_input_widget, 1)
+            
+            # Get bottomControlsLayout (index 1)
+            bottom_controls_item = input_container_layout.itemAt(1)
+            if bottom_controls_item:
+                bottom_controls_layout = bottom_controls_item.layout()
+                if bottom_controls_layout:
+                    # Set stretch factor = 0 so bottomControlsLayout stays fixed
+                    input_container_layout.setStretchFactor(bottom_controls_layout, 0)
+                else:
+                    # If it's a widget instead of a layout, get the widget
+                    bottom_controls_widget = bottom_controls_item.widget()
+                    if bottom_controls_widget:
+                        # Set stretch factor = 0 so bottomControlsLayout stays fixed
+                        input_container_layout.setStretchFactor(bottom_controls_widget, 0)
+            
+            print("Input container layout configured: messageInput resizes, bottomControlsLayout fixed.")
+        else:
+            print(f"Warning: inputContainerLayout has {input_container_layout.count()} items, expected 2.")
 
     def _populate_models(self):
         """Populates the modelComboBox with models from the ConfigManager."""
@@ -592,7 +646,9 @@ class MainWindow(QMainWindow):
         Handles loading a chat when an item in the projects tree is clicked.
         """
         if not current:
-            # No item selected
+            # No item selected - save messageInput content before clearing
+            if self.current_chat_file_path:
+                self._save_current_chat()
             self.current_chat_file_path = None
             self.current_messages = []  # Clear messages
             self._clear_chat_display()
@@ -608,7 +664,9 @@ class MainWindow(QMainWindow):
         item_path = Path(item_path_str)
 
         if item_path.is_dir():
-            # It's a project, not a chat file. Clear display.
+            # It's a project, not a chat file. Save messageInput content before clearing.
+            if self.current_chat_file_path:
+                self._save_current_chat()
             self.current_chat_file_path = None
             self.current_messages = []  # Clear messages
             self._clear_chat_display()
@@ -617,6 +675,10 @@ class MainWindow(QMainWindow):
                 self.messageInput.setEnabled(False)
 
         elif item_path.is_file() and item_path.suffix == '.json':
+            # Save messageInput content to the previous chat before loading a new one
+            if self.current_chat_file_path and self.current_chat_file_path != item_path:
+                self._save_current_chat()
+            
             # It's a chat file. Load it.
             print(f"Loading chat: {item_path}")
             self._load_chat_from_file(item_path)
@@ -626,7 +688,9 @@ class MainWindow(QMainWindow):
         Handles loading a chat when an item in the chats list is clicked.
         """
         if not current:
-            # No item selected
+            # No item selected - save messageInput content before clearing
+            if self.current_chat_file_path:
+                self._save_current_chat()
             self.current_chat_file_path = None
             self.current_messages = []  # Clear messages
             self._clear_chat_display()
@@ -642,6 +706,10 @@ class MainWindow(QMainWindow):
         item_path = Path(item_path_str)
 
         if item_path.is_file() and item_path.suffix == '.json':
+            # Save messageInput content to the previous chat before loading a new one
+            if self.current_chat_file_path and self.current_chat_file_path != item_path:
+                self._save_current_chat()
+            
             # It's a chat file. Load it.
             print(f"Loading chat: {item_path}")
             self._load_chat_from_file(item_path)
@@ -1157,6 +1225,10 @@ class MainWindow(QMainWindow):
     
     def _edit_system_message_for_path(self, item_path: Path):
         """Common method to edit system message for a given path."""
+        # If this is the currently loaded chat, save messageInput content first
+        if self.current_chat_file_path == item_path:
+            self._save_current_chat()
+        
         # Load the chat to get current system message
         messages = self.chat_history_manager.load_chat(item_path)
         system_message = ""
