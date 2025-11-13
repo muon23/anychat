@@ -34,7 +34,8 @@ class ChatHistoryManager:
         folder_item = QTreeWidgetItem(parent, [name])
         folder_item.setIcon(0, icons["folder"])
         folder_item.setData(0, PathRole, str(path))
-        folder_item.setFlags(item_flags | Qt.ItemFlag.ItemIsDropEnabled)
+        # Enable both dragging and dropping for folder items (projects)
+        folder_item.setFlags(item_flags | Qt.ItemFlag.ItemIsDropEnabled | Qt.ItemFlag.ItemIsDragEnabled)
         folder_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
         return folder_item
 

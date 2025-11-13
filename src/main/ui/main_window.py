@@ -2079,8 +2079,8 @@ class MainWindow(QMainWindow):
 
     def _projects_tree_start_drag(self, supported_actions):
         """
-        Override startDrag for projectsTree to provide file path in mime data and custom drag pixmap
-        (for chat files only).
+        Override startDrag for projectsTree to provide file/directory path in mime data and custom drag pixmap
+        (for both chat files and project directories).
         """
         selected_items = self.projectsTree.selectedItems()
         if not selected_items:
@@ -2089,15 +2089,14 @@ class MainWindow(QMainWindow):
             return
 
         item = selected_items[0]
-        file_path_str = item.data(0, PathRole)
-        if not file_path_str:
+        path_str = item.data(0, PathRole)
+        if not path_str:
             QTreeWidget.startDrag(self.projectsTree, supported_actions)
             return
 
-        file_path = Path(file_path_str)
-        # Only allow dragging chat files, not folders
-        if not file_path.is_file() or file_path.suffix != '.json':
-            # For folders, use default behavior (no drag)
+        path = Path(path_str)
+        # Allow dragging both files and directories
+        if not path.exists():
             return
 
         # Get display name and icon
@@ -2106,7 +2105,7 @@ class MainWindow(QMainWindow):
         
         # Create drag pixmap and execute
         self._create_drag_pixmap_and_exec(
-            self.projectsTree, item, file_path_str, display_name, icon, supported_actions
+            self.projectsTree, item, path_str, display_name, icon, supported_actions
         )
 
     def _move_chat_file(self, source_path: Path, target_dir: Path, event: QDropEvent = None) -> Path | None:
@@ -2140,6 +2139,40 @@ class MainWindow(QMainWindow):
         
         return target_path
 
+    def _move_project_directory(self, source_path: Path, target_dir: Path, event: QDropEvent = None) -> Path | None:
+        """
+        Helper to move a project directory from source_path to target_dir.
+        All contents (subdirectories and files) will be moved with it.
+        Returns the target_path if successful, None otherwise.
+        If event is provided, will call event.ignore() on errors.
+        """
+        target_path = target_dir / source_path.name
+        if target_path.exists():
+            error_msg = f"A directory with this name already exists in the target location."
+            QMessageBox.warning(self, "Move Error", error_msg)
+            if event:
+                event.ignore()
+            return None
+        
+        # Save current chat if it's inside the directory being moved
+        if self.current_chat_file_path and self.current_chat_file_path.is_relative_to(source_path):
+            self._save_current_chat()
+        
+        # Move the directory (shutil.move handles recursive moves)
+        import shutil
+        shutil.move(str(source_path), str(target_path))
+        
+        # Update current_chat_file_path if it was inside the moved directory
+        if self.current_chat_file_path and self.current_chat_file_path.is_relative_to(source_path):
+            # Recalculate the path relative to the new location
+            relative_path = self.current_chat_file_path.relative_to(source_path)
+            self.current_chat_file_path = target_path / relative_path
+        
+        # Reload the UI
+        self._load_chat_history()
+        
+        return target_path
+
     def _chats_list_drag_enter_event(self, event: QDragEnterEvent):
         """Handle drag enter event for chats list."""
         if event.mimeData().hasText():
@@ -2164,7 +2197,7 @@ class MainWindow(QMainWindow):
             event.ignore()
 
     def _chats_list_drop_event(self, event: QDropEvent):
-        """Handle drop event for chats list - move chat files from projects to top-level."""
+        """Handle drop event for chats list - move chat files or project directories from projects to top-level."""
         if not event.mimeData().hasText():
             event.ignore()
             return
@@ -2174,14 +2207,14 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
 
-        # Get the source file path from mime data
+        # Get the source path from mime data
         source_path_str = event.mimeData().text()
         if not source_path_str:
             event.ignore()
             return
 
         source_path = Path(source_path_str)
-        if not source_path.exists() or not source_path.is_file():
+        if not source_path.exists():
             event.ignore()
             return
 
@@ -2193,20 +2226,29 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
 
-        # Move the file
+        # Move the file or directory
         try:
-            target_path = self._move_chat_file(source_path, target_dir, event)
+            if source_path.is_file():
+                target_path = self._move_chat_file(source_path, target_dir, event)
+                if target_path:
+                    # Select the moved item in the chats list
+                    for i in range(self.chatsList.count()):
+                        item = self.chatsList.item(i)
+                        if item and item.data(PathRole) == str(target_path):
+                            self.chatsList.setCurrentItem(item)
+                            self.chatsList.scrollToItem(item)
+                            break
+            else:
+                # Move directory to top-level
+                target_path = self._move_project_directory(source_path, target_dir, event)
+                if target_path:
+                    # Select the moved item in the projects tree
+                    self._select_item_by_path(target_path)
+            
             if target_path:
-                # Select the moved item in the chats list
-                for i in range(self.chatsList.count()):
-                    item = self.chatsList.item(i)
-                    if item and item.data(PathRole) == str(target_path):
-                        self.chatsList.setCurrentItem(item)
-                        self.chatsList.scrollToItem(item)
-                        break
                 event.acceptProposedAction()
         except Exception as e:
-            QMessageBox.warning(self, "Move Error", f"Could not move file: {e}")
+            QMessageBox.warning(self, "Move Error", f"Could not move: {e}")
             event.ignore()
 
     def _projects_tree_drag_enter_event(self, event: QDragEnterEvent):
@@ -2226,26 +2268,89 @@ class MainWindow(QMainWindow):
         if event.mimeData().hasText():
             source = event.source()
             if source == self.chatsList or source == self.projectsTree:
-                # Check if dropping on a valid target (project folder or tree root)
-                item = self.projectsTree.itemAt(event.position().toPoint())
-                if item:
-                    # Check if it's a folder (project) or file (chat)
-                    item_path_str = item.data(0, PathRole)
-                    if item_path_str:
-                        item_path = Path(item_path_str)
-                        if item_path.is_dir():
-                            # Dropping on a project folder - allow
+                # Get source path from mime data
+                source_path_str = event.mimeData().text()
+                if source_path_str:
+                    source_path = Path(source_path_str)
+                    
+                    # Check if dropping on a valid target (project folder or tree root)
+                    drop_pos = event.position().toPoint()
+                    item = self.projectsTree.itemAt(drop_pos)
+                    
+                    # Check if dropping on the source item itself - treat as empty space
+                    if item:
+                        item_path_str = item.data(0, PathRole)
+                        if item_path_str and Path(item_path_str) == source_path:
+                            # Dropping on source item - allow (will be treated as empty space in drop event)
                             event.acceptProposedAction()
                             return
-                # Allow dropping on tree root (empty area)
-                event.acceptProposedAction()
+                    
+                    # Only treat as dropping into an item if the drop position is within the item's visual rectangle
+                    if item:
+                        item_rect = self.projectsTree.visualItemRect(item)
+                        if item_rect.contains(drop_pos):
+                            # Check if it's a folder (project) or file (chat)
+                            item_path_str = item.data(0, PathRole)
+                            if item_path_str:
+                                item_path = Path(item_path_str)
+                                if item_path.is_dir():
+                                    # Prevent dropping a directory into itself or its descendants
+                                    if source_path.is_dir():
+                                        # Check if target is the same as source
+                                        if item_path == source_path:
+                                            event.ignore()
+                                            return
+                                        
+                                        # Check if target is a descendant of source (target is inside source)
+                                        try:
+                                            item_path.relative_to(source_path)
+                                            # If we get here, target is inside source - disallow
+                                            event.ignore()
+                                            return
+                                        except ValueError:
+                                            # target is not inside source - this is fine
+                                            pass
+                                        
+                                        # Check if source is inside target (source is a subdirectory of target)
+                                        try:
+                                            source_path.relative_to(item_path)
+                                            # If we get here, source is inside target
+                                            # This is fine if they're siblings or if target is not a descendant of source
+                                            if item_path.parent == source_path.parent:
+                                                # They're siblings - allow
+                                                event.acceptProposedAction()
+                                                return
+                                            elif item_path == source_path.parent:
+                                                # target is the parent - allow (no-op case, but allow for visual feedback)
+                                                event.acceptProposedAction()
+                                                return
+                                            else:
+                                                # Check if target is a descendant of source (would create a loop)
+                                                try:
+                                                    item_path.relative_to(source_path)
+                                                    # This shouldn't happen since we already checked above
+                                                    event.ignore()
+                                                    return
+                                                except ValueError:
+                                                    # target is not a descendant of source, so this is a valid move
+                                                    event.acceptProposedAction()
+                                                    return
+                                        except ValueError:
+                                            # source is not inside target - they're completely separate, which is fine
+                                            pass
+                                    # Dropping on a project folder - allow
+                                    event.acceptProposedAction()
+                                    return
+                    
+                    # Dropping on empty area (tree root) - always allow (drop event will handle validation)
+                    event.acceptProposedAction()
             else:
                 event.ignore()
         else:
             event.ignore()
 
     def _projects_tree_drop_event(self, event: QDropEvent):
-        """Handle drop event for projects tree - move chat files."""
+        """Handle drop event for projects tree - move chat files or project directories."""
         if not event.mimeData().hasText():
             event.ignore()
             return
@@ -2255,48 +2360,118 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
 
-        # Get the source file path from mime data
+        # Get the source path from mime data
         source_path_str = event.mimeData().text()
         if not source_path_str:
             event.ignore()
             return
 
         source_path = Path(source_path_str)
-        if not source_path.exists() or not source_path.is_file():
+        if not source_path.exists():
             event.ignore()
             return
 
         # Get the target (where to drop)
-        item = self.projectsTree.itemAt(event.position().toPoint())
+        drop_pos = event.position().toPoint()
+        item = self.projectsTree.itemAt(drop_pos)
         target_dir = self.chat_history_manager.history_root  # Default to root
 
+        # Check if dropping on the source item itself - treat as empty space (no-op)
         if item:
-            # Check if dropping on a folder (project) or file (chat)
             item_path_str = item.data(0, PathRole)
             if item_path_str:
                 item_path = Path(item_path_str)
-                if item_path.is_dir():
-                    # Dropping on a project folder
-                    target_dir = item_path
-                elif item_path.is_file():
-                    # Dropping on a chat file - use its parent directory
-                    target_dir = item_path.parent
-        # If item is None, dropping on tree root, target_dir is already set to history_root
+                # If dropping on the source item itself, ignore (no-op)
+                if item_path == source_path:
+                    event.ignore()
+                    return
+                
+                # Determine target directory based on what we're dropping on
+                item_rect = self.projectsTree.visualItemRect(item)
+                # Only treat as dropping into an item if the drop position is clearly within the item's rectangle
+                if item_rect.contains(drop_pos):
+                    if item_path.is_dir():
+                        # Dropping on a project folder
+                        target_dir = item_path
+                    elif item_path.is_file():
+                        # Dropping on a chat file - use its parent directory
+                        target_dir = item_path.parent
+                # If drop position is outside item rect, target_dir remains as root (empty space)
+        # If no item, target_dir is already root (empty space)
 
         # Don't move if source and target are the same
         if source_path.parent == target_dir:
             event.ignore()
             return
 
-        # Move the file
+        # Prevent moving a directory into itself or its descendants
+        if source_path.is_dir():
+            # Check if target is the same as source
+            if target_dir == source_path:
+                QMessageBox.warning(self, "Move Error", "Cannot move a directory into itself.")
+                event.ignore()
+                return
+            
+            # Check if target is a descendant of source (target is inside source)
+            try:
+                target_dir.relative_to(source_path)
+                # If we get here, target is inside source - disallow
+                QMessageBox.warning(self, "Move Error", "Cannot move a directory into itself or its subdirectories.")
+                event.ignore()
+                return
+            except ValueError:
+                # target is not inside source - this is fine
+                pass
+            
+            # Check if source is inside target (source is a subdirectory of target)
+            # This is only a problem if we're trying to move source into a nested subdirectory of itself
+            try:
+                source_path.relative_to(target_dir)
+                # If we get here, source is inside target
+                # This is fine if:
+                # 1. target_dir is the direct parent of source_path (moving up one level - already checked above)
+                # 2. They're siblings (same parent) - moving between siblings is fine
+                # 3. target_dir is a completely separate branch (not a descendant of source)
+                
+                # Check if they're siblings
+                if target_dir.parent == source_path.parent:
+                    # They're siblings - this is fine
+                    pass
+                elif target_dir == source_path.parent:
+                    # target is the parent - this is fine (no-op case already handled above)
+                    pass
+                else:
+                    # source is inside target, but target is not a sibling or parent
+                    # This means we're trying to move into a nested subdirectory
+                    # Check if target is a descendant of source (would create a loop)
+                    try:
+                        target_dir.relative_to(source_path)
+                        # This shouldn't happen since we already checked above, but just in case
+                        QMessageBox.warning(self, "Move Error", "Cannot move a directory into itself or its subdirectories.")
+                        event.ignore()
+                        return
+                    except ValueError:
+                        # target is not a descendant of source, so this is a valid move
+                        # (e.g., moving "xxxx" from root into "New Project 1/abcdefg" when "abcdefg" is not inside "xxxx")
+                        pass
+            except ValueError:
+                # source is not inside target - they're completely separate, which is fine
+                pass
+
+        # Move the file or directory
         try:
-            target_path = self._move_chat_file(source_path, target_dir, event)
+            if source_path.is_file():
+                target_path = self._move_chat_file(source_path, target_dir, event)
+            else:
+                # Move directory
+                target_path = self._move_project_directory(source_path, target_dir, event)
+            
             if target_path:
                 # Select the moved item in the projects tree
                 self._select_item_by_path(target_path)
                 event.acceptProposedAction()
         except Exception as e:
-            QMessageBox.warning(self, "Move Error", f"Could not move file: {e}")
+            QMessageBox.warning(self, "Move Error", f"Could not move: {e}")
             event.ignore()
 
     def _select_item_by_path(self, file_path: Path):
