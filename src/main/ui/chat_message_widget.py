@@ -48,6 +48,9 @@ class ChatMessageWidget(QWidget):
         self._is_deleted = False  # Flag to track if widget is being deleted
         self._regenerate_handler = None  # Store the current regenerate button handler
         
+        # Store opacity effects for buttons (public access through method)
+        self._button_opacity_effects = {}  # Maps button -> QGraphicsOpacityEffect
+        
         # Resize state
         self._is_resizing = False
         self._resize_start_pos = QPoint()
@@ -102,6 +105,7 @@ class ChatMessageWidget(QWidget):
         opacity_effect = QGraphicsOpacityEffect()
         opacity_effect.setOpacity(0.5)  # 50% opacity
         self.resize_button.setGraphicsEffect(opacity_effect)
+        self._button_opacity_effects[self.resize_button] = opacity_effect
         self.resize_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(0, 0, 0, 0.3);
@@ -116,8 +120,6 @@ class ChatMessageWidget(QWidget):
                 color: white;
             }
         """)
-        # Store effect reference for hover handling
-        self.resize_button._opacity_effect = opacity_effect
         self.resize_button.pressed.connect(self._on_resize_pressed)
         self.resize_button.released.connect(self._on_resize_released)
         self.resize_button.hide()  # Initially hidden, shown based on role
@@ -131,6 +133,7 @@ class ChatMessageWidget(QWidget):
         opacity_effect = QGraphicsOpacityEffect()
         opacity_effect.setOpacity(0.5)  # 50% opacity
         self.fork_button.setGraphicsEffect(opacity_effect)
+        self._button_opacity_effects[self.fork_button] = opacity_effect
         self.fork_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(0, 0, 0, 0.3);
@@ -145,8 +148,6 @@ class ChatMessageWidget(QWidget):
                 color: white;
             }
         """)
-        # Store effect reference for hover handling
-        self.fork_button._opacity_effect = opacity_effect
         self.fork_button.clicked.connect(self.forkRequested.emit)
         self.fork_button.setEnabled(False)  # Disabled until implemented
         
@@ -158,6 +159,7 @@ class ChatMessageWidget(QWidget):
         opacity_effect = QGraphicsOpacityEffect()
         opacity_effect.setOpacity(0.5)  # 50% opacity
         self.copy_button.setGraphicsEffect(opacity_effect)
+        self._button_opacity_effects[self.copy_button] = opacity_effect
         self.copy_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(0, 0, 0, 0.3);
@@ -172,8 +174,6 @@ class ChatMessageWidget(QWidget):
                 color: white;
             }
         """)
-        # Store effect reference for hover handling
-        self.copy_button._opacity_effect = opacity_effect
         self.copy_button.clicked.connect(self._on_copy_clicked)
         
         self.cut_button = QPushButton("✂️", self.button_container)
@@ -184,6 +184,7 @@ class ChatMessageWidget(QWidget):
         opacity_effect = QGraphicsOpacityEffect()
         opacity_effect.setOpacity(0.5)  # 50% opacity
         self.cut_button.setGraphicsEffect(opacity_effect)
+        self._button_opacity_effects[self.cut_button] = opacity_effect
         self.cut_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(0, 0, 0, 0.3);
@@ -198,8 +199,6 @@ class ChatMessageWidget(QWidget):
                 color: white;
             }
         """)
-        # Store effect reference for hover handling
-        self.cut_button._opacity_effect = opacity_effect
         self.cut_button.clicked.connect(self._on_cut_clicked)
         
         # Create regenerate button for both user and assistant (shown/hidden based on role)
@@ -211,6 +210,7 @@ class ChatMessageWidget(QWidget):
         opacity_effect = QGraphicsOpacityEffect()
         opacity_effect.setOpacity(0.5)  # 50% opacity
         self.regenerate_button.setGraphicsEffect(opacity_effect)
+        self._button_opacity_effects[self.regenerate_button] = opacity_effect
         self.regenerate_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(0, 0, 0, 0.3);
@@ -225,8 +225,6 @@ class ChatMessageWidget(QWidget):
                 color: white;
             }
         """)
-        # Store effect reference for hover handling
-        self.regenerate_button._opacity_effect = opacity_effect
         self.regenerate_button.installEventFilter(self)
         
         # Create mode toggle button for assistant messages (pencil for rendered, eye for raw)
@@ -238,6 +236,7 @@ class ChatMessageWidget(QWidget):
         opacity_effect = QGraphicsOpacityEffect()
         opacity_effect.setOpacity(0.5)  # 50% opacity
         self.mode_toggle_button.setGraphicsEffect(opacity_effect)
+        self._button_opacity_effects[self.mode_toggle_button] = opacity_effect
         self.mode_toggle_button.setStyleSheet("""
             QPushButton {
                 background-color: rgba(0, 0, 0, 0.3);
@@ -252,8 +251,6 @@ class ChatMessageWidget(QWidget):
                 color: white;
             }
         """)
-        # Store effect reference for hover handling
-        self.mode_toggle_button._opacity_effect = opacity_effect
         self.mode_toggle_button.installEventFilter(self)
         self.mode_toggle_button.clicked.connect(self._on_mode_toggle_clicked)
         self.mode_toggle_button.setVisible(False)  # Hidden by default, shown for assistant messages
@@ -392,12 +389,22 @@ class ChatMessageWidget(QWidget):
             # Reset buttons to translucent when hidden
             self._set_buttons_opacity(0.5)
     
+    def _set_button_opacity(self, button, opacity: float):
+        """Set opacity for a button if it has a QGraphicsOpacityEffect stored."""
+        if button and button in self._button_opacity_effects:
+            effect = self._button_opacity_effects[button]
+            if effect:
+                effect.setOpacity(opacity)
+    
     def _set_buttons_opacity(self, opacity: float):
         """Set opacity for all visible buttons."""
-        buttons = [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button, self.mode_toggle_button]
+        buttons = [
+            self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button,
+            self.mode_toggle_button
+        ]
         for button in buttons:
-            if button and button.isVisible() and hasattr(button, '_opacity_effect'):
-                button._opacity_effect.setOpacity(opacity)
+            if button and button.isVisible():
+                self._set_button_opacity(button, opacity)
     
     def _position_buttons(self):
         """Position buttons in the lower right of the messageContent bubble."""
@@ -562,15 +569,18 @@ class ChatMessageWidget(QWidget):
                 # Hide buttons when mouse leaves button container
                 QTimer.singleShot(100, self._check_and_hide_buttons)
         # Handle button hover events for individual buttons
-        elif obj in [self.resize_button, self.fork_button, self.copy_button, self.cut_button, self.regenerate_button, self.mode_toggle_button]:
+        elif obj in [
+            self.resize_button,
+            self.fork_button, self.copy_button, self.cut_button, self.regenerate_button,
+            self.mode_toggle_button
+        ]:
             if event.type() == QEvent.Type.Enter:
                 # Make button solid on hover
-                if hasattr(obj, '_opacity_effect'):
-                    obj._opacity_effect.setOpacity(1.0)
+                self._set_button_opacity(obj, 1.0)
             elif event.type() == QEvent.Type.Leave:
                 # Make button translucent when mouse leaves (but keep visible if container is visible)
-                if hasattr(obj, '_opacity_effect') and self.button_container.isVisible():
-                    obj._opacity_effect.setOpacity(0.5)
+                if self.button_container.isVisible():
+                    self._set_button_opacity(obj, 0.5)
         return super().eventFilter(obj, event)
 
     def set_message(self, role: str, content: str, list_item: QListWidgetItem, model: str = None):
@@ -623,12 +633,6 @@ class ChatMessageWidget(QWidget):
             # Reorder buttons: regenerate, mode_toggle, copy, resize
             layout = self.button_container.layout()
             if layout and isinstance(layout, QBoxLayout):
-                # Remove resize if it was added before (shouldn't be, but just in case)
-                try:
-                    layout.removeWidget(self.resize_button)
-                    layout.removeWidget(self.mode_toggle_button)
-                except:
-                    pass
                 # Reorder buttons: regenerate, mode_toggle, copy, resize
                 layout.removeWidget(self.regenerate_button)
                 layout.removeWidget(self.copy_button)
@@ -651,13 +655,9 @@ class ChatMessageWidget(QWidget):
             # Show all user buttons: resize (separate, lower left), fork, regenerate, copy, cut (lower right)
             self.resize_button.setVisible(True)
             self.resize_button.setText("↙️")
-            # Remove resize button from container layout for user messages
+            # Remove resize button from container layout for user messages (it's positioned separately)
             layout = self.button_container.layout()
             if layout and isinstance(layout, QBoxLayout):
-                try:
-                    layout.removeWidget(self.resize_button)
-                except:
-                    pass
                 # Show other buttons: fork, regenerate, copy, cut
                 self.fork_button.setVisible(True)
                 self.regenerate_button.setVisible(True)
