@@ -72,6 +72,10 @@ class ChatMessageWidget(QWidget):
         # Enable mouse tracking for resize handle
         self.setMouseTracking(True)
     
+    def is_deleted(self) -> bool:
+        """Public method to check if the widget is marked for deletion."""
+        return self._is_deleted
+    
     def _create_action_buttons(self):
         """Create action buttons (fork, copy, cut, regenerate) in the lower right."""
         # Create a container widget for buttons positioned absolutely

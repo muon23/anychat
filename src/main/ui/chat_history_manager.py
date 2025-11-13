@@ -18,7 +18,7 @@ class ChatHistoryManager:
         self.history_root.mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def _get_icons(cls):
+    def get_icons(cls):
         """Helper to get standard system icons."""
         style = QApplication.style()
         return {
@@ -70,7 +70,7 @@ class ChatHistoryManager:
     def load_history(self, tree_widget: QTreeWidget):
         """Clears and reloads the entire chat history into the QTreeWidget. (Deprecated - use load_projects and load_top_level_chats)"""
         tree_widget.clear()
-        icons = self._get_icons()
+        icons = self.get_icons()
         tree_widget.setHeaderHidden(True)  # Hide the "1" header
 
         try:
@@ -95,7 +95,7 @@ class ChatHistoryManager:
     def load_projects(self, tree_widget: QTreeWidget):
         """Loads only project directories into the QTreeWidget."""
         tree_widget.clear()
-        icons = self._get_icons()
+        icons = self.get_icons()
         tree_widget.setHeaderHidden(True)
 
         try:
@@ -115,7 +115,7 @@ class ChatHistoryManager:
     def load_top_level_chats(self, list_widget: QListWidget):
         """Loads only top-level chat files into the QListWidget."""
         list_widget.clear()
-        icons = self._get_icons()
+        icons = self.get_icons()
 
         try:
             for name in sorted(os.listdir(self.history_root)):
@@ -159,7 +159,7 @@ class ChatHistoryManager:
 
             # Add the new chat to the tree
             chat_item = QTreeWidgetItem(parent_node, [chat_name])
-            chat_item.setIcon(0, self._get_icons()["file"])
+            chat_item.setIcon(0, self.get_icons()["file"])
             chat_item.setData(0, PathRole, str(new_chat_path))
             item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
             chat_item.setFlags(item_flags)
@@ -192,7 +192,7 @@ class ChatHistoryManager:
 
             # Add the new chat to the list
             list_item = QListWidgetItem(chat_name)
-            list_item.setIcon(self._get_icons()["file"])
+            list_item.setIcon(self.get_icons()["file"])
             list_item.setData(PathRole, str(new_chat_path))
             list_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
             list_widget.addItem(list_item)
@@ -223,7 +223,7 @@ class ChatHistoryManager:
         try:
             new_project_path.mkdir()
             project_item = QTreeWidgetItem(parent_node, [project_name])
-            project_item.setIcon(0, self._get_icons()["folder"])
+            project_item.setIcon(0, self.get_icons()["folder"])
             project_item.setData(0, PathRole, str(new_project_path))
             item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDropEnabled | Qt.ItemFlag.ItemIsEditable)
             project_item.setFlags(item_flags)

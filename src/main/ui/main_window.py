@@ -3,8 +3,10 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent, QMimeData
-from PySide6.QtGui import QResizeEvent, QKeyEvent, QWheelEvent, QFontMetrics, QShortcut, QKeySequence, QDragEnterEvent, \
+from PySide6.QtGui import (
+    QResizeEvent, QKeyEvent, QWheelEvent, QFontMetrics, QShortcut, QKeySequence, QDragEnterEvent,
     QDragMoveEvent, QDropEvent
+)
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QPushButton,
@@ -87,18 +89,19 @@ class MainWindow(QMainWindow):
                 # Set single step to one line height for smooth scrolling
                 scrollbar.setSingleStep(line_height)
                 # Enable smooth scrolling
-                scrollbar.setPageStep(viewport_height if (viewport_height := self.chatDisplay.viewport().height()) > 0 else line_height * 10)
+                scrollbar.setPageStep(viewport_height if (
+                                                             viewport_height := self.chatDisplay.viewport().height()) > 0 else line_height * 10)
 
             # Install event filter for smooth scrolling and arrow key navigation
             self.chatDisplay.installEventFilter(self)
             # Enable keyboard focus for arrow key navigation
             self.chatDisplay.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-            
+
             # Create QShortcut for PageUp and PageDown for reliable key handling
             # On Mac, these are Fn+Up and Fn+Down
             self.shortcut_prev_user = QShortcut(QKeySequence(Qt.Key.Key_PageUp), self)
             self.shortcut_prev_user.activated.connect(lambda: self._jump_to_user_message(direction=-1))
-            
+
             self.shortcut_next_user = QShortcut(QKeySequence(Qt.Key.Key_PageDown), self)
             self.shortcut_next_user.activated.connect(lambda: self._jump_to_user_message(direction=1))
 
@@ -141,7 +144,7 @@ class MainWindow(QMainWindow):
             # If it's one of our custom chat widgets, tell it to update its size
             if isinstance(widget, ChatMessageWidget):
                 widget.update_size()
-    
+
     def keyPressEvent(self, event: QKeyEvent):
         """Handle key press events for PageUp/PageDown key navigation."""
         # Handle PageUp/PageDown keys for navigating user messages
@@ -154,9 +157,9 @@ class MainWindow(QMainWindow):
                 # Jump to next user message from currently focused bubble
                 self._jump_to_user_message(direction=1)
                 return
-        
+
         super().keyPressEvent(event)
-    
+
     def eventFilter(self, obj, event: QEvent):
         """Event filter for chatDisplay: smooth scrolling, and drag-and-drop for projects tree."""
         # Handle drag-and-drop events for projects tree
@@ -173,7 +176,7 @@ class MainWindow(QMainWindow):
                 if isinstance(event, QDropEvent):
                     self._projects_tree_drop_event(event)
                     return True
-        
+
         # Handle smooth scrolling for chatDisplay
         if obj == self.chatDisplay:
             if event.type() == QEvent.Type.Wheel:
@@ -183,26 +186,26 @@ class MainWindow(QMainWindow):
                     if scrollbar:
                         # Use singleStep for smooth line-by-line scrolling
                         single_step = scrollbar.singleStep()
-                        
+
                         # Get the wheel delta (angleDelta is in 1/8 degree units, typically 120*8 = 960 per click)
                         delta = event.angleDelta().y()
-                        
+
                         # For smooth scrolling, scroll proportionally to the delta
                         # Each 960 units = one "click" = one line
                         # For smaller deltas, scroll proportionally (e.g., 480 units = 0.5 lines)
                         lines_to_scroll = delta / 960.0
-                        
+
                         # Scroll by the calculated number of lines (can be fractional for smoothness)
                         current_value = scrollbar.value()
                         pixels_to_scroll = int(lines_to_scroll * single_step)
                         new_value = current_value - pixels_to_scroll
-                        
+
                         # Clamp to valid range
                         new_value = max(scrollbar.minimum(), min(new_value, scrollbar.maximum()))
                         scrollbar.setValue(new_value)
-                        
+
                         return True  # Event handled
-            
+
             elif event.type() == QEvent.Type.KeyPress:
                 if isinstance(event, QKeyEvent):
                     if event.key() == Qt.Key.Key_Up:
@@ -213,19 +216,21 @@ class MainWindow(QMainWindow):
                         # Jump to next user message from currently focused bubble
                         self._jump_to_user_message(direction=1)
                         return True
-        
+
         return super().eventFilter(obj, event)
-    
+
     def _jump_to_user_message(self, direction: int):
-        """Jump to the previous (direction=-1) or next (direction=1) user message bubble from the currently focused one."""
+        """
+        Jump to the previous (direction=-1) or next (direction=1) user message bubble from the currently focused one.
+        """
         if not self.chatDisplay:
             return
-        
+
         # Find the currently focused/selected item
         # First try to find an item that has a focused widget
         current_item = None
         current_index = -1
-        
+
         # Check if any item has a focused widget
         for i in range(self.chatDisplay.count()):
             item = self.chatDisplay.item(i)
@@ -233,11 +238,12 @@ class MainWindow(QMainWindow):
                 widget = self.chatDisplay.itemWidget(item)
                 if isinstance(widget, ChatMessageWidget):
                     # Check if the widget or its messageContent has focus
-                    if widget.hasFocus() or (hasattr(widget, 'ui') and widget.ui.messageContent and widget.ui.messageContent.hasFocus()):
+                    if widget.hasFocus() or (
+                            hasattr(widget, 'ui') and widget.ui.messageContent and widget.ui.messageContent.hasFocus()):
                         current_item = item
                         current_index = i
                         break
-        
+
         # If no focused item found, try to find the item at the top of the viewport
         if current_item is None:
             scrollbar = self.chatDisplay.verticalScrollBar()
@@ -249,10 +255,10 @@ class MainWindow(QMainWindow):
                     if item:
                         item_rect = self.chatDisplay.visualItemRect(item)
                         if item_rect.top() >= current_scroll - 10:  # Allow small tolerance
-                            current_item = item
+                            # current_item = item
                             current_index = i
                             break
-        
+
         # Find all user message items with their indices
         user_items = []
         for i in range(self.chatDisplay.count()):
@@ -261,13 +267,13 @@ class MainWindow(QMainWindow):
                 widget = self.chatDisplay.itemWidget(item)
                 if isinstance(widget, ChatMessageWidget) and widget.role == "user":
                     user_items.append((i, item))
-        
+
         if not user_items:
             return
-        
+
         # Find the target user message based on direction and current position
         target_item = None
-        
+
         if current_index >= 0:
             # Find user messages relative to current position
             if direction < 0:  # Up - find previous user message
@@ -299,7 +305,7 @@ class MainWindow(QMainWindow):
                 current_scroll = scrollbar.value()
                 viewport_height = self.chatDisplay.viewport().height()
                 current_bottom = current_scroll + viewport_height
-                
+
                 if direction < 0:  # Up
                     # Find the last user message above viewport
                     for i, item in reversed(user_items):
@@ -324,7 +330,7 @@ class MainWindow(QMainWindow):
                             if last_rect.bottom() <= current_bottom:
                                 return  # Already showing last message
                         target_item = user_items[-1][1]  # Last user message
-        
+
         # Scroll to the target item, positioning it at the top
         if target_item:
             self.chatDisplay.scrollToItem(target_item, self.chatDisplay.ScrollHint.PositionAtTop)
@@ -373,7 +379,7 @@ class MainWindow(QMainWindow):
             # Replace messageInput with spell-checking version
             if self.messageInput:
                 self._replace_with_spell_check(self.messageInput, "messageInput")
-            
+
             # Configure input container layout after messageInput is replaced
             self._configure_input_container_layout()
 
@@ -401,7 +407,7 @@ class MainWindow(QMainWindow):
             # Replace messageInput with spell-checking version
             if self.messageInput:
                 self._replace_with_spell_check(self.messageInput, "messageInput")
-            
+
             # Configure input container layout after messageInput is replaced
             self._configure_input_container_layout()
 
@@ -436,16 +442,20 @@ class MainWindow(QMainWindow):
             # Enable drag-and-drop for projects tree
             self.projectsTree.setDragDropMode(QTreeWidget.DragDropMode.DragDrop)
             self.projectsTree.setDefaultDropAction(Qt.DropAction.MoveAction)
+
             # Override drag and drop events using lambdas
             def custom_drag_enter(event):
                 self._projects_tree_drag_enter_event(event)
+
             def custom_drag_move(event):
                 self._projects_tree_drag_move_event(event)
+
             def custom_drop(event):
                 self._projects_tree_drop_event(event)
+
             def custom_start_drag(supported_actions):
                 return self._projects_tree_start_drag(supported_actions)
-            
+
             self.projectsTree.dragEnterEvent = custom_drag_enter
             self.projectsTree.dragMoveEvent = custom_drag_move
             self.projectsTree.dropEvent = custom_drop
@@ -466,17 +476,23 @@ class MainWindow(QMainWindow):
             self.chatsList.setAcceptDrops(True)
             self.chatsList.setDefaultDropAction(Qt.DropAction.MoveAction)
             # Override startDrag method using a lambda that captures self
-            original_start_drag = self.chatsList.startDrag
+            # original_start_drag = self.chatsList.startDrag
+
             def custom_start_drag(supported_actions):
                 return self._chats_list_start_drag(supported_actions)
+
             self.chatsList.startDrag = custom_start_drag
+
             # Override drag and drop events for accepting drops
             def custom_drag_enter(event):
                 self._chats_list_drag_enter_event(event)
+
             def custom_drag_move(event):
                 self._chats_list_drag_move_event(event)
+
             def custom_drop(event):
                 self._chats_list_drop_event(event)
+
             self.chatsList.dragEnterEvent = custom_drag_enter
             self.chatsList.dragMoveEvent = custom_drag_move
             self.chatsList.dropEvent = custom_drop
@@ -502,7 +518,7 @@ class MainWindow(QMainWindow):
                 # Get parent and layout
                 parent = old_widget.parent()
                 layout = None
-                
+
                 # Find the layout that contains this widget
                 if parent:
                     for child in parent.children():
@@ -511,13 +527,13 @@ class MainWindow(QMainWindow):
                             if idx >= 0:
                                 layout = child
                                 break
-                
+
                 if layout:
                     # Get widget properties
                     text = old_widget.toPlainText()
                     placeholder = old_widget.placeholderText()
                     max_height = old_widget.maximumHeight()
-                    
+
                     # Create new spell-checking widget
                     new_widget = SpellCheckTextEdit(parent)
                     new_widget.setObjectName(object_name)
@@ -525,7 +541,7 @@ class MainWindow(QMainWindow):
                     new_widget.setPlaceholderText(placeholder)
                     new_widget.setMaximumHeight(max_height)
                     new_widget.setAcceptRichText(old_widget.acceptRichText())
-                    
+
                     # Replace in layout
                     idx = layout.indexOf(old_widget)
                     layout.removeWidget(old_widget)
@@ -536,7 +552,7 @@ class MainWindow(QMainWindow):
                         # For other layout types, just add the widget
                         layout.addWidget(new_widget)
                     old_widget.deleteLater()
-                    
+
                     # Update reference
                     self.messageInput = new_widget
                     print(f"Replaced {object_name} with spell-checking version.")
@@ -550,11 +566,11 @@ class MainWindow(QMainWindow):
         input_container = self.findChild(QWidget, "inputContainer")
         if not input_container:
             return
-        
+
         input_container_layout = input_container.layout()
         if not input_container_layout or not isinstance(input_container_layout, QVBoxLayout):
             return
-        
+
         # The layout should have 2 items: messageInput (index 0) and bottomControlsLayout (index 1)
         # Set stretch factor: messageInput = 1 (can expand/contract), bottomControlsLayout = 0 (fixed)
         if input_container_layout.count() >= 2:
@@ -572,7 +588,7 @@ class MainWindow(QMainWindow):
                     message_input_widget.setSizePolicy(size_policy)
                     # Set stretch factor > 0 so messageInput can expand/contract
                     input_container_layout.setStretchFactor(message_input_widget, 1)
-            
+
             # Get bottomControlsLayout (index 1)
             bottom_controls_item = input_container_layout.itemAt(1)
             if bottom_controls_item:
@@ -586,7 +602,7 @@ class MainWindow(QMainWindow):
                     if bottom_controls_widget:
                         # Set stretch factor = 0 so bottomControlsLayout stays fixed
                         input_container_layout.setStretchFactor(bottom_controls_widget, 0)
-            
+
             print("Input container layout configured: messageInput resizes, bottomControlsLayout fixed.")
         else:
             print(f"Warning: inputContainerLayout has {input_container_layout.count()} items, expected 2.")
@@ -608,12 +624,12 @@ class MainWindow(QMainWindow):
         if not self.chat_history_manager:
             print("Warning: 'chat_history_manager' not found.")
             return
-        
+
         if self.projectsTree:
             expanded_paths = self._get_expanded_state()
             self.chat_history_manager.load_projects(self.projectsTree)
             self._set_expanded_state(expanded_paths)
-        
+
         if self.chatsList:
             self.chat_history_manager.load_top_level_chats(self.chatsList)
 
@@ -695,7 +711,7 @@ class MainWindow(QMainWindow):
     def _on_tree_item_selected(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
         """Deprecated - use _on_projects_item_selected instead."""
         self._on_projects_item_selected(current, previous)
-    
+
     def _on_projects_item_selected(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
         """
         Handles loading a chat when an item in the projects tree is clicked.
@@ -733,11 +749,11 @@ class MainWindow(QMainWindow):
             # Save messageInput content to the previous chat before loading a new one
             if self.current_chat_file_path and self.current_chat_file_path != item_path:
                 self._save_current_chat()
-            
+
             # It's a chat file. Load it.
             print(f"Loading chat: {item_path}")
             self._load_chat_from_file(item_path)
-    
+
     def _on_chats_item_selected(self, current: QListWidgetItem, previous: QListWidgetItem = None):
         """
         Handles loading a chat when an item in the chats list is clicked.
@@ -764,7 +780,7 @@ class MainWindow(QMainWindow):
             # Save messageInput content to the previous chat before loading a new one
             if self.current_chat_file_path and self.current_chat_file_path != item_path:
                 self._save_current_chat()
-            
+
             # It's a chat file. Load it.
             print(f"Loading chat: {item_path}")
             self._load_chat_from_file(item_path)
@@ -815,7 +831,7 @@ class MainWindow(QMainWindow):
                 if message.get("role") == "assistant" and "model" in message:
                     last_assistant_model = message.get("model")
                     break
-            
+
             if last_assistant_model:
                 # Try to set the combo box to this model
                 index = self.modelComboBox.findText(last_assistant_model)
@@ -838,11 +854,11 @@ class MainWindow(QMainWindow):
 
         # Get system messages from current_messages (they're not displayed)
         system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
-        
+
         messages_to_save = []
         # Add system messages first (if any)
         messages_to_save.extend(system_messages)
-        
+
         # Add messages from widgets
         # IMPORTANT: Check widget validity to avoid segfaults
         for i in range(self.chatDisplay.count()):
@@ -852,7 +868,7 @@ class MainWindow(QMainWindow):
             widget = self.chatDisplay.itemWidget(item)
             if widget and isinstance(widget, ChatMessageWidget):
                 # Skip deleted widgets
-                if hasattr(widget, '_is_deleted') and widget._is_deleted:
+                if widget.is_deleted():
                     continue
                 # Do not save "thinking" messages
                 role = widget.role
@@ -878,7 +894,7 @@ class MainWindow(QMainWindow):
     def _show_tree_context_menu(self, position: QPoint):
         """Deprecated - use _show_projects_context_menu instead."""
         self._show_projects_context_menu(position)
-    
+
     def _show_projects_context_menu(self, position: QPoint):
         """Shows a context menu when right-clicking on the projects tree."""
         context_menu = QMenu(self)
@@ -920,7 +936,7 @@ class MainWindow(QMainWindow):
             new_root_project_action.triggered.connect(self.handle_new_root_project)
 
         context_menu.exec(self.projectsTree.viewport().mapToGlobal(position))
-    
+
     def _show_chats_context_menu(self, position: QPoint):
         """Shows a context menu when right-clicking on the chats list."""
         context_menu = QMenu(self)
@@ -972,7 +988,8 @@ class MainWindow(QMainWindow):
         """Handles the 'New Chat' button click (creates a root 'Chat N' with inline editing)."""
         print("New Chat (root) clicked.")
         if self.chatsList and self.chat_history_manager:
-            new_item = self.chat_history_manager.create_new_chat_in_list(self.chatsList, self.chat_history_manager.history_root)
+            new_item = self.chat_history_manager.create_new_chat_in_list(self.chatsList,
+                                                                         self.chat_history_manager.history_root)
             if new_item:
                 self.chatsList.setCurrentItem(new_item)
                 # Start inline editing
@@ -986,7 +1003,7 @@ class MainWindow(QMainWindow):
             if new_item:
                 self.projectsTree.setCurrentItem(new_item)
                 # Start inline editing
-                self._start_inline_edit_project(new_item)
+                self._start_inline_edit_tree_item(new_item)
 
     def handle_new_chat_in_project(self, project_item):
         """Creates a named chat inside the selected project with inline editing."""
@@ -996,7 +1013,7 @@ class MainWindow(QMainWindow):
             if new_item:
                 self.projectsTree.setCurrentItem(new_item)
                 # Start inline editing
-                self._start_inline_edit_chat_tree(new_item)
+                self._start_inline_edit_tree_item(new_item)
 
     def handle_new_subproject(self, project_item: QTreeWidgetItem):
         """Creates a subproject inside the selected project with inline editing."""
@@ -1006,19 +1023,16 @@ class MainWindow(QMainWindow):
             if new_item:
                 self.projectsTree.setCurrentItem(new_item)
                 # Start inline editing
-                self._start_inline_edit_project(new_item)
+                self._start_inline_edit_tree_item(new_item)
 
     def handle_rename_item(self, item: QTreeWidgetItem):
         """Handles the 'Rename' context menu action - starts inline editing."""
         try:
             # Check if it's a project (directory) or chat (file)
             old_path = Path(item.data(0, PathRole))
-            if old_path.is_dir():
-                # It's a project - use project inline editing
-                self._start_inline_edit_project(item)
-            elif old_path.is_file() and old_path.suffix == '.json':
-                # It's a chat file in the tree - use chat tree inline editing
-                self._start_inline_edit_chat_tree(item)
+            if old_path.is_dir() or (old_path.is_file() and old_path.suffix == '.json'):
+                # It's a project or chat file in the tree - use tree inline editing
+                self._start_inline_edit_tree_item(item)
         except Exception as e:
             print(f"Error during rename: {e}")
             QMessageBox.warning(self, "Error", f"Could not start rename: {e}")
@@ -1032,7 +1046,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error during delete: {e}")
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
-    
+
     def handle_rename_chat_item(self, item: QListWidgetItem):
         """Handles the 'Rename' context menu action for chat list items - starts inline editing."""
         try:
@@ -1041,7 +1055,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error during rename: {e}")
             QMessageBox.warning(self, "Error", f"Could not start rename: {e}")
-    
+
     def handle_delete_chat_item(self, item: QListWidgetItem):
         """Handles the 'Delete' context menu action for chat list items."""
         try:
@@ -1051,95 +1065,86 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error during delete: {e}")
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
-    
-    def _start_inline_edit_project(self, item: QTreeWidgetItem):
-        """Starts inline editing for a project item (like macOS Finder)."""
+
+    def _start_inline_edit_tree_item(self, item: QTreeWidgetItem):
+        """Starts inline editing for a tree item (project or chat) in the projects tree."""
         if not item or not self.projectsTree:
             return
         # Ensure item is editable
         flags = item.flags()
         if not (flags & Qt.ItemFlag.ItemIsEditable):
             item.setFlags(flags | Qt.ItemFlag.ItemIsEditable)
+
         # Use a timer to ensure the item is fully displayed before starting edit
         # Store item reference to avoid lambda capture issues
         def start_edit():
             if item and self.projectsTree:
                 self.projectsTree.editItem(item, 0)
+
         QTimer.singleShot(100, start_edit)
-    
-    def _start_inline_edit_chat_tree(self, item: QTreeWidgetItem):
-        """Starts inline editing for a chat item in the projects tree."""
-        if not item or not self.projectsTree:
-            return
-        # Ensure item is editable
-        flags = item.flags()
-        if not (flags & Qt.ItemFlag.ItemIsEditable):
-            item.setFlags(flags | Qt.ItemFlag.ItemIsEditable)
-        # Use a timer to ensure the item is fully displayed before starting edit
-        def start_edit():
-            if item and self.projectsTree:
-                self.projectsTree.editItem(item, 0)
-        QTimer.singleShot(100, start_edit)
-    
+
     def _start_inline_edit_chat(self, item: QListWidgetItem):
         """Starts inline editing for a chat item in the chats list."""
         if not item or not self.chatsList:
             return
+
         # QListWidget doesn't have built-in editing, so we'll use a custom approach
         # Store item reference to avoid lambda capture issues
         def start_edit():
             if item and self.chatsList:
                 self._edit_chat_item_inline(item)
+
         QTimer.singleShot(100, start_edit)
-    
+
     def _edit_chat_item_inline(self, item: QListWidgetItem):
         """Edits a chat list item inline using a custom editor."""
         # Get current name and preserve icon
         old_name = item.text()
         old_path = Path(item.data(PathRole))
-        icons = self.chat_history_manager._get_icons()
+        icons = self.chat_history_manager.get_icons()
         file_icon = icons["file"]
-        
+
         # Ensure icon is set before starting edit
         item.setIcon(file_icon)
-        
+
         # Create a line edit widget positioned over the item
         # Adjust rect to only cover text area, leaving space for icon
         rect = self.chatsList.visualItemRect(item)
         # QListWidget typically reserves ~20-24px for icon on the left
         icon_width = 24
         text_rect = rect.adjusted(icon_width, 0, 0, 0)  # Move left edge right by icon width
-        
+
         editor = QLineEdit(self.chatsList.viewport())
         editor.setText(old_name)
         editor.selectAll()
         editor.setGeometry(text_rect)
         editor.show()
         editor.setFocus()
-        
+
         # Force icon to remain visible after editor is shown
         # Use a timer to ensure icon is set after UI updates
         def ensure_icon():
             if item:
                 item.setIcon(file_icon)
+
         QTimer.singleShot(10, ensure_icon)
         QTimer.singleShot(50, ensure_icon)
-        
+
         # Flag to prevent multiple calls to finish_edit
         _editing_finished = False
-        
+
         def finish_edit():
             nonlocal _editing_finished
             if _editing_finished:
                 return
             _editing_finished = True
-            
+
             new_name = editor.text().strip()
             editor.deleteLater()
-            
+
             # Always restore the icon immediately after editor is removed
             item.setIcon(file_icon)
-            
+
             if new_name and new_name != old_name:
                 # Rename the file
                 if self.chat_history_manager.rename_item(old_path, new_name, self):
@@ -1180,9 +1185,9 @@ class MainWindow(QMainWindow):
             else:
                 # Name unchanged, but ensure icon is still there
                 item.setIcon(file_icon)
-        
+
         editor.editingFinished.connect(finish_edit)
-        
+
         # Handle Escape and Return keys - event filter must inherit from QObject
         class EditorEventFilter(QObject):
             def __init__(self, editor, item, icon, finish_callback):
@@ -1191,7 +1196,7 @@ class MainWindow(QMainWindow):
                 self.item = item
                 self.icon = icon
                 self.finish_callback = finish_callback
-            
+
             def eventFilter(self, obj, event):
                 if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
                     if event.key() == Qt.Key.Key_Escape:
@@ -1207,17 +1212,17 @@ class MainWindow(QMainWindow):
                         QTimer.singleShot(0, lambda: self.finish_callback() if self.finish_callback else None)
                         return True
                 return False
-        
+
         filter_obj = EditorEventFilter(editor, item, file_icon, finish_edit)
         editor.installEventFilter(filter_obj)
         # Store filter to prevent garbage collection
         editor._event_filter = filter_obj
-    
+
     def _on_projects_item_edited(self, item: QTreeWidgetItem, column: int):
         """Handles when a project tree item is edited inline."""
         if column != 0:
             return
-        
+
         new_name = item.text(column).strip()
         if not new_name:
             # Empty name - restore old name or delete
@@ -1227,14 +1232,14 @@ class MainWindow(QMainWindow):
                 old_name = old_path.stem if old_path.is_file() else old_path.name
                 item.setText(0, old_name)
             return
-        
+
         old_path_str = item.data(0, PathRole)
         if not old_path_str:
             return
-        
+
         old_path = Path(old_path_str)
         old_name = old_path.stem if old_path.is_file() else old_path.name
-        
+
         if new_name != old_name:
             # Rename the file/directory
             if self.chat_history_manager.rename_item(old_path, new_name, self):
@@ -1245,7 +1250,7 @@ class MainWindow(QMainWindow):
             else:
                 # Rename failed - restore old name
                 item.setText(0, old_name)
-    
+
     def _on_chats_item_edited(self, item: QListWidgetItem):
         """Handles when a chat list item is edited inline."""
         # This is called when the item text is changed programmatically
@@ -1258,32 +1263,32 @@ class MainWindow(QMainWindow):
             item_path = Path(item.data(0, PathRole))
             if not item_path.is_file() or item_path.suffix != '.json':
                 return
-            
+
             self._edit_system_message_for_path(item_path)
-                    
+
         except Exception as e:
             print(f"Error editing system message: {e}")
             QMessageBox.warning(self, "Error", f"Could not edit system message: {e}")
-    
+
     def handle_edit_system_message_chat(self, item: QListWidgetItem):
         """Handles the 'Edit System Message' context menu action for list items."""
         try:
             item_path = Path(item.data(PathRole))
             if not item_path.is_file() or item_path.suffix != '.json':
                 return
-            
+
             self._edit_system_message_for_path(item_path)
-                    
+
         except Exception as e:
             print(f"Error editing system message: {e}")
             QMessageBox.warning(self, "Error", f"Could not edit system message: {e}")
-    
+
     def _edit_system_message_for_path(self, item_path: Path):
         """Common method to edit system message for a given path."""
         # If this is the currently loaded chat, save messageInput content first
         if self.current_chat_file_path == item_path:
             self._save_current_chat()
-        
+
         # Load the chat to get current system message
         messages = self.chat_history_manager.load_chat(item_path)
         system_message = ""
@@ -1292,26 +1297,26 @@ class MainWindow(QMainWindow):
             if msg.get("role") == "system":
                 system_message = msg.get("content", "")
                 break
-        
+
         # Get templates directory from config
         templates_dir = self.config_manager.get_system_message_templates()
-        
+
         # Open dialog
         dialog = SystemMessageDialog(system_message, self, templates_directory=templates_dir)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_system_text = dialog.get_text()
-            
+
             # Apply: Remove existing system messages first
             messages = [msg for msg in messages if msg.get("role") != "system"]
-            
+
             # Add new system message at the beginning if not empty
             if new_system_text:
                 system_msg = {"role": "system", "content": new_system_text}
                 messages.insert(0, system_msg)
-            
+
             # Save the updated messages
             self.chat_history_manager.save_chat(item_path, messages)
-            
+
             # If this is the currently loaded chat, reload it
             if self.current_chat_file_path == item_path:
                 self._load_chat_from_file(item_path)
@@ -1378,7 +1383,7 @@ class MainWindow(QMainWindow):
                         break
             # Save the error message to the chat
             self._save_current_chat()
-    
+
     def _handle_cut_message(self, widget: ChatMessageWidget):
         """Handle cut action: copy to clipboard, remove from chat history, and delete widget."""
         # Wrap everything in try-except to catch any access to deleted widgets
@@ -1386,7 +1391,7 @@ class MainWindow(QMainWindow):
             # Validate widget is still alive and valid
             if not widget:
                 return
-            
+
             # Get the list item - wrap in try-except as widget might be deleted
             try:
                 list_item = widget.list_item
@@ -1395,17 +1400,17 @@ class MainWindow(QMainWindow):
             except (RuntimeError, AttributeError):
                 # Widget was deleted or list_item is invalid
                 return
-            
+
             # Find the index of this widget in the chat display
             list_widget = list_item.listWidget()
             if not list_widget:
                 return
-            
+
             # Get the index of this item
             item_index = list_widget.row(list_item)
             if item_index < 0:
                 return
-            
+
             # Disconnect all signals from the widget before deletion
             try:
                 widget.editingFinished.disconnect()
@@ -1419,7 +1424,7 @@ class MainWindow(QMainWindow):
                 widget.regenerateRequested.disconnect()
             except (RuntimeError, TypeError, AttributeError):
                 pass
-            
+
             # Remove the widget from the display
             # IMPORTANT: Mark widget as deleted first to prevent signal handlers from accessing it
             try:
@@ -1428,18 +1433,18 @@ class MainWindow(QMainWindow):
                 widget.list_item = None
             except (RuntimeError, AttributeError):
                 pass
-            
+
             # Remove widget from item first
             existing_item = list_widget.item(item_index)
             if existing_item:
                 list_widget.removeItemWidget(existing_item)
-            
+
             # Now take the item
             removed_item = list_widget.takeItem(item_index)
             if removed_item:
                 del removed_item
             # Don't call deleteLater() - let Python garbage collect it naturally
-            
+
             # Save the chat (which will rebuild current_messages without this message)
             self._save_current_chat()
         except Exception as e:
@@ -1448,14 +1453,83 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
             return
+
+    def _build_messages_list(self, list_widget, end_index: int, include_end: bool = True) -> list:
+        """Helper to build messages list with system messages and displayed messages up to end_index."""
+        messages = []
+        
+        # Get system messages first
+        system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
+        messages.extend(system_messages)
+        
+        # Get all displayed messages up to and including end_index
+        end = end_index + 1 if include_end else end_index
+        for i in range(end):
+            item = list_widget.item(i)
+            if item:
+                item_widget = list_widget.itemWidget(item)
+                if isinstance(item_widget, ChatMessageWidget):
+                    role = item_widget.role
+                    if role in ("user", "assistant"):
+                        try:
+                            messages.append(item_widget.get_message_dict())
+                        except (RuntimeError, AttributeError):
+                            continue
+        
+        return messages
     
+    def _call_llm_and_update_widget(
+            self, widget: ChatMessageWidget, list_item, list_widget, messages: list, model: str
+    ):
+        """Helper to show thinking state, call LLM, update widget, and handle errors."""
+        # Show "thinking" state in the existing bubble
+        try:
+            widget.set_message("thinking", "...", list_item)
+            QApplication.processEvents()  # Update UI immediately
+        except (RuntimeError, AttributeError):
+            return
+        
+        # Call LLM with the messages
+        try:
+            response_content = self.llm_service.get_response(model, messages)
+            
+            # Replace the text in the existing bubble with the response
+            try:
+                widget.set_message("assistant", response_content, list_item, model)
+                # Ensure editingFinished is connected for saving
+                try:
+                    widget.editingFinished.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+                widget.editingFinished.connect(self._save_current_chat)
+                
+                # Scroll to the item to keep it in view
+                list_widget.scrollToItem(list_item)
+                QApplication.processEvents()  # Force UI update
+                
+                # Save the chat with the new response
+                self._save_current_chat()
+            except (RuntimeError, AttributeError) as e:
+                print(f"Error updating widget: {e}")
+                return
+        
+        except Exception as e:
+            error_message = f"Error: {e}"
+            try:
+                widget.set_message("assistant", error_message, list_item, model)
+                list_widget.scrollToItem(list_item)
+                QApplication.processEvents()
+                self._save_current_chat()
+            except (RuntimeError, AttributeError):
+                pass
+
     def _handle_regenerate_message(self, widget: ChatMessageWidget):
         """Handle regenerate for assistant message: show refine dialog and refine/regenerate."""
         try:
             # Validate widget is still alive and valid
             if not widget or widget.role != "assistant":
                 return
-            
+
             # Get the list item - wrap in try-except as widget might be deleted
             try:
                 list_item = widget.list_item
@@ -1463,49 +1537,43 @@ class MainWindow(QMainWindow):
                     return
             except (RuntimeError, AttributeError):
                 return
-        
+
             if not self.current_chat_file_path:
                 QMessageBox.warning(self, "No Chat Selected", "Cannot refine: no active chat.")
                 return
-            
+
             if not self.llm_service or not self.modelComboBox:
                 QMessageBox.warning(self, "Error", "LLM service or model selector not available.")
                 return
-            
+
             # Get refine prompt from config
             refine_prompt = self.config_manager.get_refine_prompt()
-            
+
             # Show refine dialog
             dialog = RefineDialog(refine_prompt=refine_prompt, parent=self)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 # User cancelled
                 return
-            
+
             # Get user input from dialog
             user_input = dialog.get_text()
-            
+
             # Get the model to use from the combo box (user may have changed it)
             # This allows user to regenerate with a different model than the original
             model = self.modelComboBox.currentText()
-            
+
             # Find the list widget and get the index
             list_widget = list_item.listWidget()
             if not list_widget:
                 return
-            
+
             assistant_index = list_widget.row(list_item)
             if assistant_index < 0:
                 return
-            
+
             # Build messages based on whether user input is empty
             if not user_input:
                 # Empty input: regenerate - take chat history up to and including the last user message
-                messages_to_send = []
-                
-                # Get system messages first
-                system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
-                messages_to_send.extend(system_messages)
-                
                 # Find the last user message before this assistant message
                 last_user_index = -1
                 for i in range(assistant_index - 1, -1, -1):
@@ -1516,137 +1584,85 @@ class MainWindow(QMainWindow):
                             last_user_index = i
                             break
                 
-                # Get all displayed messages up to and including the last user message
-                for i in range(last_user_index + 1):
-                    item = list_widget.item(i)
-                    if item:
-                        item_widget = list_widget.itemWidget(item)
-                        if isinstance(item_widget, ChatMessageWidget):
-                            role = item_widget.role
-                            if role in ("user", "assistant"):
-                                try:
-                                    messages_to_send.append(item_widget.get_message_dict())
-                                except (RuntimeError, AttributeError):
-                                    continue
+                messages_to_send = self._build_messages_list(list_widget, last_user_index, include_end=True)
             else:
                 # Has user input: refine - duplicate chat history up to and including this assistant message
-                messages_to_send = []
+                messages_to_send = self._build_messages_list(list_widget, assistant_index, include_end=True)
                 
-                # Get system messages first
-                system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
-                messages_to_send.extend(system_messages)
-                
-                # Get all displayed messages up to and including this assistant message
-                for i in range(assistant_index + 1):
-                    item = list_widget.item(i)
-                    if item:
-                        item_widget = list_widget.itemWidget(item)
-                        if isinstance(item_widget, ChatMessageWidget):
-                            role = item_widget.role
-                            if role in ("user", "assistant"):
-                                try:
-                                    messages_to_send.append(item_widget.get_message_dict())
-                                except (RuntimeError, AttributeError):
-                                    continue
-                
-                # Add the refine user message at the end
+                # Add the refining user message at the end
                 refine_message = f"{refine_prompt}\n\n{user_input}"
                 messages_to_send.append({"role": "user", "content": refine_message})
-            
-            # Show "thinking" state in the existing bubble
-            try:
-                widget.set_message("thinking", "...", list_item)
-                QApplication.processEvents()  # Update UI immediately
-            except (RuntimeError, AttributeError):
-                return
-            
-            # Call LLM with the messages
-            try:
-                response_content = self.llm_service.get_response(model, messages_to_send)
-                
-                # Replace the text in the existing bubble with the response
-                try:
-                    widget.set_message("assistant", response_content, list_item, model)
-                    # Ensure editingFinished is connected for saving
-                    try:
-                        widget.editingFinished.disconnect()
-                    except (RuntimeError, TypeError):
-                        pass
-                    widget.editingFinished.connect(self._save_current_chat)
-                    
-                    # Scroll to the item to keep it in view
-                    list_widget.scrollToItem(list_item)
-                    QApplication.processEvents()  # Force UI update
-                    
-                    # Save the chat with the new response
-                    self._save_current_chat()
-                except (RuntimeError, AttributeError) as e:
-                    print(f"Error updating widget: {e}")
-                    return
-                
-            except Exception as e:
-                error_message = f"Error: {e}"
-                try:
-                    widget.set_message("assistant", error_message, list_item, model)
-                    list_widget.scrollToItem(list_item)
-                    QApplication.processEvents()
-                    self._save_current_chat()
-                except (RuntimeError, AttributeError):
-                    pass
+
+            # Call LLM and update widget
+            self._call_llm_and_update_widget(widget, list_item, list_widget, messages_to_send, model)
         except Exception as e:
             # Catch any exception including segfault-like errors
             print(f"Error in _handle_regenerate_message: {e}")
             import traceback
             traceback.print_exc()
             return
-    
+
     def _on_cut_requested(self):
         """Slot for cutRequested signal - finds widget by sender to avoid capturing references."""
         try:
             sender = self.sender()
             if sender and isinstance(sender, ChatMessageWidget):
                 # Check if widget is marked as deleted
-                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                if sender.is_deleted():
                     return
                 self._handle_cut_message(sender)
         except (RuntimeError, AttributeError):
             # Widget was deleted
             return
-    
+
     def _on_regenerate_requested(self):
         """Slot for regenerateRequested signal - finds widget by sender to avoid capturing references."""
         try:
             sender = self.sender()
             if sender and isinstance(sender, ChatMessageWidget):
                 # Check if widget is marked as deleted
-                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                if sender.is_deleted():
                     return
                 self._handle_regenerate_message(sender)
         except (RuntimeError, AttributeError):
             # Widget was deleted
             return
-    
+
+    def _get_widget_info(self, widget: ChatMessageWidget, expected_role: str = None):
+        """
+        Helper to extract widget information: list_item, list_widget, and index.
+        Returns (list_item, list_widget, index) or (None, None, -1) if invalid.
+        """
+        if not widget:
+            return None, None, -1
+        
+        if expected_role and widget.role != expected_role:
+            return None, None, -1
+        
+        try:
+            list_item = widget.list_item
+            if not list_item:
+                return None, None, -1
+        except (RuntimeError, AttributeError):
+            return None, None, -1
+        
+        list_widget = list_item.listWidget()
+        if not list_widget:
+            return None, None, -1
+        
+        index = list_widget.row(list_item)
+        if index < 0:
+            return None, None, -1
+        
+        return list_item, list_widget, index
+
     def _handle_cut_pair(self, widget: ChatMessageWidget):
         """Handle cut pair: remove user message and next assistant message."""
         try:
-            if not widget or widget.role != "user":
+            list_item, list_widget, user_index = self._get_widget_info(widget, "user")
+            if list_item is None:
                 return
-            
-            try:
-                list_item = widget.list_item
-                if not list_item:
-                    return
-            except (RuntimeError, AttributeError):
-                return
-            
-            list_widget = list_item.listWidget()
-            if not list_widget:
-                return
-            
-            user_index = list_widget.row(list_item)
-            if user_index < 0:
-                return
-            
+
             # Find the next assistant message
             assistant_item = None
             assistant_index = -1
@@ -1656,80 +1672,66 @@ class MainWindow(QMainWindow):
                     item_widget = list_widget.itemWidget(item)
                     if isinstance(item_widget, ChatMessageWidget):
                         if item_widget.role == "assistant":
-                            assistant_item = item
+                            # assistant_item = item
                             assistant_index = i
                             break
-            
+
             # Remove both messages (start from higher index to avoid index shifting)
             if assistant_index >= 0:
                 # Remove assistant message first
                 self._remove_message_at_index(list_widget, assistant_index)
-            
+
             # Remove user message
             self._remove_message_at_index(list_widget, user_index)
-            
+
             # Save the chat
             self._save_current_chat()
         except Exception as e:
             print(f"Error in _handle_cut_pair: {e}")
             import traceback
             traceback.print_exc()
-    
+
     def _handle_cut_below(self, widget: ChatMessageWidget):
         """Handle cut below: remove this message and all messages below it."""
         try:
             if not widget:
                 return
-            
+
             try:
                 list_item = widget.list_item
                 if not list_item:
                     return
             except (RuntimeError, AttributeError):
                 return
-            
+
             list_widget = list_item.listWidget()
             if not list_widget:
                 return
-            
+
             start_index = list_widget.row(list_item)
             if start_index < 0:
                 return
-            
+
             # Remove all messages from start_index to the end
             # Remove from end to start to avoid index shifting
             count = list_widget.count()
             for i in range(count - 1, start_index - 1, -1):
                 self._remove_message_at_index(list_widget, i)
-            
+
             # Save the chat
             self._save_current_chat()
         except Exception as e:
             print(f"Error in _handle_cut_below: {e}")
             import traceback
             traceback.print_exc()
-    
+
     def _handle_regenerate_user_message(self, widget: ChatMessageWidget):
         """Handle regenerate for user message: regenerate the next assistant message."""
         try:
-            if not widget or widget.role != "user":
+            list_item, list_widget, user_index = self._get_widget_info(widget, "user")
+            if list_item is None:
                 return
-            
-            try:
-                list_item = widget.list_item
-                if not list_item:
-                    return
-            except (RuntimeError, AttributeError):
-                return
-            
-            list_widget = list_item.listWidget()
-            if not list_widget:
-                return
-            
-            user_index = list_widget.row(list_item)
-            if user_index < 0:
-                return
-            
+
             # Find the next assistant message
             assistant_item = None
             assistant_index = -1
@@ -1744,89 +1746,35 @@ class MainWindow(QMainWindow):
                             assistant_index = i
                             assistant_widget = item_widget
                             break
-            
+
             if assistant_index < 0 or not assistant_widget:
                 # No assistant message found, can't regenerate
                 return
-            
+
             # Get the model to use
             try:
                 model = assistant_widget.model if assistant_widget.model else self.modelComboBox.currentText()
             except (RuntimeError, AttributeError):
                 model = self.modelComboBox.currentText()
-            
+
             # Build message history up to and including the user message
-            messages_before = []
-            
-            # Get system messages first
-            system_messages = [msg for msg in self.current_messages if msg.get("role") == "system"]
-            messages_before.extend(system_messages)
-            
-            # Get all displayed messages up to and including the user message
-            for i in range(user_index + 1):
-                item = list_widget.item(i)
-                if item:
-                    item_widget = list_widget.itemWidget(item)
-                    if isinstance(item_widget, ChatMessageWidget):
-                        role = item_widget.role
-                        if role in ("user", "assistant"):
-                            try:
-                                messages_before.append(item_widget.get_message_dict())
-                            except (RuntimeError, AttributeError):
-                                continue
-            
-            # Show "thinking" state in the assistant bubble
-            try:
-                assistant_widget.set_message("thinking", "...", assistant_item)
-                QApplication.processEvents()
-            except (RuntimeError, AttributeError):
-                return
-            
-            # Call LLM with messages including the user message
-            try:
-                response_content = self.llm_service.get_response(model, messages_before)
-                
-                # Replace the assistant message with the new response
-                try:
-                    assistant_widget.set_message("assistant", response_content, assistant_item, model)
-                    # Ensure editingFinished is connected
-                    try:
-                        assistant_widget.editingFinished.disconnect()
-                    except (RuntimeError, TypeError):
-                        pass
-                    assistant_widget.editingFinished.connect(self._save_current_chat)
-                    
-                    # Scroll to the item
-                    list_widget.scrollToItem(assistant_item)
-                    QApplication.processEvents()
-                    
-                    # Save the chat
-                    self._save_current_chat()
-                except (RuntimeError, AttributeError) as e:
-                    print(f"Error updating widget: {e}")
-                    return
-                
-            except Exception as e:
-                error_message = f"Error: {e}"
-                try:
-                    assistant_widget.set_message("assistant", error_message, assistant_item, model)
-                    list_widget.scrollToItem(assistant_item)
-                    QApplication.processEvents()
-                    self._save_current_chat()
-                except (RuntimeError, AttributeError):
-                    pass
+            messages_before = self._build_messages_list(list_widget, user_index, include_end=True)
+
+            # Call LLM and update widget
+            self._call_llm_and_update_widget(assistant_widget, assistant_item, list_widget, messages_before, model)
         except Exception as e:
             print(f"Error in _handle_regenerate_user_message: {e}")
             import traceback
             traceback.print_exc()
-    
-    def _remove_message_at_index(self, list_widget, index: int):
+
+    @classmethod
+    def _remove_message_at_index(cls, list_widget, index: int):
         """Helper method to safely remove a message at a given index."""
         try:
             item = list_widget.item(index)
             if not item:
                 return
-            
+
             widget = list_widget.itemWidget(item)
             if isinstance(widget, ChatMessageWidget):
                 # Disconnect all signals
@@ -1839,7 +1787,7 @@ class MainWindow(QMainWindow):
                     widget.regenerateUserRequested.disconnect()
                 except (RuntimeError, TypeError, AttributeError):
                     pass
-                
+
                 # Mark as deleted
                 try:
                     widget._is_deleted = True
@@ -1847,39 +1795,39 @@ class MainWindow(QMainWindow):
                     widget.list_item = None
                 except (RuntimeError, AttributeError):
                     pass
-            
+
             # Remove widget from item
             list_widget.removeItemWidget(item)
-            
+
             # Take the item
             removed_item = list_widget.takeItem(index)
             if removed_item:
                 del removed_item
         except Exception as e:
             print(f"Error removing message at index {index}: {e}")
-    
+
     def _on_cut_pair_requested(self):
         """Slot for cutPairRequested signal - cut user message and next assistant message."""
         try:
             sender = self.sender()
             if sender and isinstance(sender, ChatMessageWidget):
-                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                if sender.is_deleted():
                     return
                 self._handle_cut_pair(sender)
         except (RuntimeError, AttributeError):
             return
-    
+
     def _on_cut_below_requested(self):
         """Slot for cutBelowRequested signal - cut this message and all below."""
         try:
             sender = self.sender()
             if sender and isinstance(sender, ChatMessageWidget):
-                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                if sender.is_deleted():
                     return
                 self._handle_cut_below(sender)
         except (RuntimeError, AttributeError):
             return
-    
+
     def _on_message_focused(self, role: str, model: str):
         """Handle message focus - update modelComboBox for assistant messages."""
         if role == "assistant" and self.modelComboBox:
@@ -1895,18 +1843,77 @@ class MainWindow(QMainWindow):
                         index = self.modelComboBox.findText(model)
                         if index >= 0:
                             self.modelComboBox.setCurrentIndex(index)
-    
+
     def _on_regenerate_user_requested(self):
         """Slot for regenerateUserRequested signal - regenerate next assistant message."""
         try:
             sender = self.sender()
             if sender and isinstance(sender, ChatMessageWidget):
-                if hasattr(sender, '_is_deleted') and sender._is_deleted:
+                if sender.is_deleted():
                     return
                 self._handle_regenerate_user_message(sender)
         except (RuntimeError, AttributeError):
             return
-    
+
+    def _create_drag_pixmap_and_exec(self, widget, item, file_path_str: str, display_name: str, 
+                                      icon, supported_actions):
+        """
+        Helper to create custom drag pixmap and execute drag operation.
+        
+        Args:
+            widget: The source widget (chatsList or projectsTree)
+            item: The item being dragged
+            file_path_str: File path to include in mime data
+            display_name: Text to display in drag pixmap
+            icon: Icon to display in drag pixmap
+            supported_actions: Supported drag actions
+        """
+        from PySide6.QtGui import QDrag, QPixmap, QPainter
+        
+        # Get font from the widget
+        font = widget.font()
+        font_metrics = QFontMetrics(font)
+        
+        # Calculate size needed
+        icon_size = 16  # Standard icon size for drag
+        text_width = font_metrics.horizontalAdvance(display_name)
+        text_height = font_metrics.height()
+        padding = 4
+        total_width = icon_size + padding + text_width + padding * 2
+        total_height = max(icon_size, text_height) + padding * 2
+        
+        # Create pixmap
+        pixmap = QPixmap(total_width, total_height)
+        pixmap.fill(Qt.GlobalColor.transparent)  # Transparent background
+        
+        # Draw icon and text
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(font)
+        
+        # Draw icon
+        if not icon.isNull():
+            icon_pixmap = icon.pixmap(icon_size, icon_size)
+            painter.drawPixmap(padding, (total_height - icon_size) // 2, icon_pixmap)
+        
+        # Draw text in white color
+        painter.setPen(Qt.GlobalColor.white)
+        text_x = padding + icon_size + padding
+        text_y = (total_height + font_metrics.ascent() - font_metrics.descent()) // 2
+        painter.drawText(text_x, text_y, display_name)
+        painter.end()
+        
+        # Create mime data with file path
+        mime_data = QMimeData()
+        mime_data.setText(file_path_str)
+        
+        # Create drag object
+        drag = QDrag(widget)
+        drag.setMimeData(mime_data)
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(QPoint(padding, padding))  # Set hot spot to top-left of icon
+        drag.exec(supported_actions, Qt.DropAction.MoveAction)
+
     def _chats_list_start_drag(self, supported_actions):
         """Override startDrag for chatsList to provide file path in mime data and custom drag pixmap."""
         selected_items = self.chatsList.selectedItems()
@@ -1914,135 +1921,85 @@ class MainWindow(QMainWindow):
             # Call original startDrag if no selection
             QListWidget.startDrag(self.chatsList, supported_actions)
             return
-        
+
         item = selected_items[0]
         file_path_str = item.data(PathRole)
         if not file_path_str:
             QListWidget.startDrag(self.chatsList, supported_actions)
             return
-        
+
         # Get display name and icon
         display_name = item.text()
         icon = item.icon()
         
-        # Create custom drag pixmap
-        from PySide6.QtGui import QDrag, QPixmap, QPainter
+        # Create drag pixmap and execute
+        self._create_drag_pixmap_and_exec(
+            self.chatsList, item, file_path_str, display_name, icon, supported_actions
+        )
 
-        # Get font from the list widget
-        font = self.chatsList.font()
-        font_metrics = QFontMetrics(font)
-        
-        # Calculate size needed
-        icon_size = 16  # Standard icon size for drag
-        text_width = font_metrics.horizontalAdvance(display_name)
-        text_height = font_metrics.height()
-        padding = 4
-        total_width = icon_size + padding + text_width + padding * 2
-        total_height = max(icon_size, text_height) + padding * 2
-        
-        # Create pixmap
-        pixmap = QPixmap(total_width, total_height)
-        pixmap.fill(Qt.GlobalColor.transparent)  # Transparent background
-        
-        # Draw icon and text
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setFont(font)
-        
-        # Draw icon
-        if not icon.isNull():
-            icon_pixmap = icon.pixmap(icon_size, icon_size)
-            painter.drawPixmap(padding, (total_height - icon_size) // 2, icon_pixmap)
-        
-        # Draw text in white color
-        painter.setPen(Qt.GlobalColor.white)
-        text_x = padding + icon_size + padding
-        text_y = (total_height + font_metrics.ascent() - font_metrics.descent()) // 2
-        painter.drawText(text_x, text_y, display_name)
-        painter.end()
-        
-        # Create mime data with file path
-        mime_data = QMimeData()
-        mime_data.setText(file_path_str)
-        
-        # Create drag object
-        drag = QDrag(self.chatsList)
-        drag.setMimeData(mime_data)
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(QPoint(padding, padding))  # Set hot spot to top-left of icon
-        drag.exec(supported_actions, Qt.DropAction.MoveAction)
-    
     def _projects_tree_start_drag(self, supported_actions):
-        """Override startDrag for projectsTree to provide file path in mime data and custom drag pixmap (for chat files only)."""
+        """
+        Override startDrag for projectsTree to provide file path in mime data and custom drag pixmap
+        (for chat files only).
+        """
         selected_items = self.projectsTree.selectedItems()
         if not selected_items:
             # Call original startDrag if no selection
             QTreeWidget.startDrag(self.projectsTree, supported_actions)
             return
-        
+
         item = selected_items[0]
         file_path_str = item.data(0, PathRole)
         if not file_path_str:
             QTreeWidget.startDrag(self.projectsTree, supported_actions)
             return
-        
+
         file_path = Path(file_path_str)
         # Only allow dragging chat files, not folders
         if not file_path.is_file() or file_path.suffix != '.json':
             # For folders, use default behavior (no drag)
             return
-        
+
         # Get display name and icon
         display_name = item.text(0)
         icon = item.icon(0)
         
-        # Create custom drag pixmap
-        from PySide6.QtGui import QDrag, QPixmap, QPainter
+        # Create drag pixmap and execute
+        self._create_drag_pixmap_and_exec(
+            self.projectsTree, item, file_path_str, display_name, icon, supported_actions
+        )
 
-        # Get font from the tree widget
-        font = self.projectsTree.font()
-        font_metrics = QFontMetrics(font)
+    def _move_chat_file(self, source_path: Path, target_dir: Path, event: QDropEvent = None) -> Path | None:
+        """
+        Helper to move a chat file from source_path to target_dir.
+        Returns the target_path if successful, None otherwise.
+        If event is provided, will call event.ignore() on errors.
+        """
+        target_path = target_dir / source_path.name
+        if target_path.exists():
+            error_msg = f"A file with this name already exists in the target location."
+            QMessageBox.warning(self, "Move Error", error_msg)
+            if event:
+                event.ignore()
+            return None
         
-        # Calculate size needed
-        icon_size = 16  # Standard icon size for drag
-        text_width = font_metrics.horizontalAdvance(display_name)
-        text_height = font_metrics.height()
-        padding = 4
-        total_width = icon_size + padding + text_width + padding * 2
-        total_height = max(icon_size, text_height) + padding * 2
+        # Save current chat if it's the one being moved
+        if self.current_chat_file_path == source_path:
+            self._save_current_chat()
         
-        # Create pixmap
-        pixmap = QPixmap(total_width, total_height)
-        pixmap.fill(Qt.GlobalColor.transparent)  # Transparent background
+        # Move the file
+        import shutil
+        shutil.move(str(source_path), str(target_path))
         
-        # Draw icon and text
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setFont(font)
+        # Update current_chat_file_path if it was the moved file
+        if self.current_chat_file_path == source_path:
+            self.current_chat_file_path = target_path
         
-        # Draw icon
-        if not icon.isNull():
-            icon_pixmap = icon.pixmap(icon_size, icon_size)
-            painter.drawPixmap(padding, (total_height - icon_size) // 2, icon_pixmap)
+        # Reload the UI
+        self._load_chat_history()
         
-        # Draw text in white color
-        painter.setPen(Qt.GlobalColor.white)
-        text_x = padding + icon_size + padding
-        text_y = (total_height + font_metrics.ascent() - font_metrics.descent()) // 2
-        painter.drawText(text_x, text_y, display_name)
-        painter.end()
-        
-        # Create mime data with file path
-        mime_data = QMimeData()
-        mime_data.setText(file_path_str)
-        
-        # Create drag object
-        drag = QDrag(self.projectsTree)
-        drag.setMimeData(mime_data)
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(QPoint(padding, padding))  # Set hot spot to top-left of icon
-        drag.exec(supported_actions, Qt.DropAction.MoveAction)
-    
+        return target_path
+
     def _chats_list_drag_enter_event(self, event: QDragEnterEvent):
         """Handle drag enter event for chats list."""
         if event.mimeData().hasText():
@@ -2054,7 +2011,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.ignore()
-    
+
     def _chats_list_drag_move_event(self, event: QDragMoveEvent):
         """Handle drag move event for chats list."""
         if event.mimeData().hasText():
@@ -2065,73 +2022,53 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.ignore()
-    
+
     def _chats_list_drop_event(self, event: QDropEvent):
         """Handle drop event for chats list - move chat files from projects to top-level."""
         if not event.mimeData().hasText():
             event.ignore()
             return
-        
+
         source = event.source()
         if source != self.projectsTree:
             event.ignore()
             return
-        
+
         # Get the source file path from mime data
         source_path_str = event.mimeData().text()
         if not source_path_str:
             event.ignore()
             return
-        
+
         source_path = Path(source_path_str)
         if not source_path.exists() or not source_path.is_file():
             event.ignore()
             return
-        
+
         # Target is always the history root (top-level)
         target_dir = self.chat_history_manager.history_root
-        
+
         # Don't move if source and target are the same
         if source_path.parent == target_dir:
             event.ignore()
             return
-        
+
         # Move the file
         try:
-            target_path = target_dir / source_path.name
-            if target_path.exists():
-                QMessageBox.warning(self, "Move Error", f"A file with this name already exists in the target location.")
-                event.ignore()
-                return
-            
-            # Save current chat if it's the one being moved
-            if self.current_chat_file_path == source_path:
-                self._save_current_chat()
-            
-            # Move the file
-            import shutil
-            shutil.move(str(source_path), str(target_path))
-            
-            # Update current_chat_file_path if it was the moved file
-            if self.current_chat_file_path == source_path:
-                self.current_chat_file_path = target_path
-            
-            # Reload the UI
-            self._load_chat_history()
-            
-            # Select the moved item in the chats list
-            for i in range(self.chatsList.count()):
-                item = self.chatsList.item(i)
-                if item and item.data(PathRole) == str(target_path):
-                    self.chatsList.setCurrentItem(item)
-                    self.chatsList.scrollToItem(item)
-                    break
-            
-            event.acceptProposedAction()
+            target_path = self._move_chat_file(source_path, target_dir, event)
+            if target_path:
+                # Select the moved item in the chats list
+                for i in range(self.chatsList.count()):
+                    item = self.chatsList.item(i)
+                    if item and item.data(PathRole) == str(target_path):
+                        self.chatsList.setCurrentItem(item)
+                        self.chatsList.scrollToItem(item)
+                        break
+                event.acceptProposedAction()
         except Exception as e:
             QMessageBox.warning(self, "Move Error", f"Could not move file: {e}")
             event.ignore()
-    
+
     def _projects_tree_drag_enter_event(self, event: QDragEnterEvent):
         """Handle drag enter event for projects tree."""
         if event.mimeData().hasText():
@@ -2143,7 +2080,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.ignore()
-    
+
     def _projects_tree_drag_move_event(self, event: QDragMoveEvent):
         """Handle drag move event for projects tree."""
         if event.mimeData().hasText():
@@ -2166,33 +2103,33 @@ class MainWindow(QMainWindow):
                 event.ignore()
         else:
             event.ignore()
-    
+
     def _projects_tree_drop_event(self, event: QDropEvent):
         """Handle drop event for projects tree - move chat files."""
         if not event.mimeData().hasText():
             event.ignore()
             return
-        
+
         source = event.source()
         if source != self.chatsList and source != self.projectsTree:
             event.ignore()
             return
-        
+
         # Get the source file path from mime data
         source_path_str = event.mimeData().text()
         if not source_path_str:
             event.ignore()
             return
-        
+
         source_path = Path(source_path_str)
         if not source_path.exists() or not source_path.is_file():
             event.ignore()
             return
-        
+
         # Get the target (where to drop)
         item = self.projectsTree.itemAt(event.position().toPoint())
         target_dir = self.chat_history_manager.history_root  # Default to root
-        
+
         if item:
             # Check if dropping on a folder (project) or file (chat)
             item_path_str = item.data(0, PathRole)
@@ -2205,45 +2142,26 @@ class MainWindow(QMainWindow):
                     # Dropping on a chat file - use its parent directory
                     target_dir = item_path.parent
         # If item is None, dropping on tree root, target_dir is already set to history_root
-        
+
         # Don't move if source and target are the same
         if source_path.parent == target_dir:
             event.ignore()
             return
-        
+
         # Move the file
         try:
-            target_path = target_dir / source_path.name
-            if target_path.exists():
-                QMessageBox.warning(self, "Move Error", f"A file with this name already exists in the target location.")
-                event.ignore()
-                return
-            
-            # Save current chat if it's the one being moved
-            if self.current_chat_file_path == source_path:
-                self._save_current_chat()
-            
-            # Move the file
-            import shutil
-            shutil.move(str(source_path), str(target_path))
-            
-            # Update current_chat_file_path if it was the moved file
-            if self.current_chat_file_path == source_path:
-                self.current_chat_file_path = target_path
-            
-            # Reload the UI
-            self._load_chat_history()
-            
-            # Select the moved item in the projects tree
-            self._select_item_by_path(target_path)
-            
-            event.acceptProposedAction()
+            target_path = self._move_chat_file(source_path, target_dir, event)
+            if target_path:
+                # Select the moved item in the projects tree
+                self._select_item_by_path(target_path)
+                event.acceptProposedAction()
         except Exception as e:
             QMessageBox.warning(self, "Move Error", f"Could not move file: {e}")
             event.ignore()
-    
+
     def _select_item_by_path(self, file_path: Path):
         """Select an item in the projects tree by its file path."""
+
         def find_item_recursive(item: QTreeWidgetItem, target_path: Path) -> QTreeWidgetItem | None:
             item_path_str = item.data(0, PathRole)
             if item_path_str:
@@ -2257,7 +2175,7 @@ class MainWindow(QMainWindow):
                 if found:
                     return found
             return None
-        
+
         # Search through all top-level items
         for i in range(self.projectsTree.topLevelItemCount()):
             top_item = self.projectsTree.topLevelItem(i)
@@ -2266,13 +2184,12 @@ class MainWindow(QMainWindow):
                 self.projectsTree.setCurrentItem(found)
                 self.projectsTree.scrollToItem(found)
                 break
-    
 
 
 def setup_logging(config_manager):
     """Setup logging based on configuration."""
     log_level_str = config_manager.get_log_level()
-    
+
     # Map string level to logging constant
     level_map = {
         'debug': logging.DEBUG,
@@ -2281,14 +2198,14 @@ def setup_logging(config_manager):
         'error': logging.ERROR
     }
     log_level = level_map.get(log_level_str, logging.WARNING)
-    
+
     # Configure root logger
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
+
     logger = logging.getLogger(__name__)
     logger.info(f"Logging initialized at level: {log_level_str.upper()}")
 
@@ -2301,7 +2218,7 @@ if __name__ == "__main__":
     # We'll use print here since logging isn't set up yet
     print("Loading configuration...")
     config_manager = ConfigManager()
-    
+
     # Now set up logging based on config
     setup_logging(config_manager)
     logger = logging.getLogger(__name__)
@@ -2316,17 +2233,18 @@ if __name__ == "__main__":
 
     keys_file_path = Path(keys_file_str)
     chat_history_path = Path(chat_history_root_str)
-    
+
     # Check if keys_file is inside chat_history_root (security check)
     keys_file_resolved = keys_file_path.resolve()
     chat_history_resolved = chat_history_path.resolve()
-    
+
     try:
         # Check if keys_file is within chat_history_root
         keys_file_relative = keys_file_resolved.relative_to(chat_history_resolved)
         # If we get here without exception, keys_file is inside chat_history_root
         logger.error(f"keys_file ({keys_file_resolved}) is inside chat_history_root ({chat_history_resolved})")
-        logger.error("This is not allowed for security reasons. Please configure keys_file outside of chat_history_root.")
+        logger.error(
+            "This is not allowed for security reasons. Please configure keys_file outside of chat_history_root.")
         sys.exit(1)
     except ValueError:
         # ValueError means keys_file is NOT inside chat_history_root, which is good
