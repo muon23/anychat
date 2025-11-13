@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QStyle, QApplication, QMessageBox, QListWidget, QListWidgetItem
+from PySide6.QtWidgets import (
+    QTreeWidget, QTreeWidgetItem, QStyle, QApplication, QMessageBox, QListWidget, QListWidgetItem
+)
 
 # This custom data role is the key. We'll store the full file path
 # in each tree item under this role.
@@ -128,7 +130,9 @@ class ChatHistoryManager:
                     list_item.setIcon(icons["file"])
                     list_item.setData(PathRole, str(path))
                     # Enable dragging for list items
-                    list_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
+                    list_item.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled
+                    )
                     list_widget.addItem(list_item)
         except OSError as e:
             print(f"Error reading history root {self.history_root}: {e}")
@@ -225,7 +229,10 @@ class ChatHistoryManager:
             project_item = QTreeWidgetItem(parent_node, [project_name])
             project_item.setIcon(0, self.get_icons()["folder"])
             project_item.setData(0, PathRole, str(new_project_path))
-            item_flags = (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDropEnabled | Qt.ItemFlag.ItemIsEditable)
+            item_flags = (
+                    Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable |
+                    Qt.ItemFlag.ItemIsDropEnabled | Qt.ItemFlag.ItemIsEditable
+            )
             project_item.setFlags(item_flags)
             project_item.setData(0, Qt.ItemDataRole.CheckStateRole, None)  # Hide checkbox
 
