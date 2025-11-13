@@ -1363,8 +1363,7 @@ class MainWindow(QMainWindow):
 
         # Check if another LLM call is in progress
         if self._llm_call_in_progress:
-            QMessageBox.warning(self, "LLM Call In Progress", 
-                              "Please wait for the current LLM call to complete.")
+            QMessageBox.warning(self, "LLM Call In Progress", "Please wait for the current LLM call to complete.")
             return
 
         message = self.messageInput.toPlainText().strip()
@@ -1566,8 +1565,7 @@ class MainWindow(QMainWindow):
         """Helper to show thinking state, call LLM asynchronously, update widget, and handle errors."""
         # Check if another LLM call is in progress
         if self._llm_call_in_progress:
-            QMessageBox.warning(self, "LLM Call In Progress", 
-                              "Please wait for the current LLM call to complete.")
+            QMessageBox.warning(self, "LLM Call In Progress", "Please wait for the current LLM call to complete.")
             return
         
         # Show "thinking" state in the existing bubble
@@ -1691,8 +1689,7 @@ class MainWindow(QMainWindow):
             
             # Check again if LLM call started while dialog was open
             if self._llm_call_in_progress:
-                QMessageBox.warning(self, "LLM Call In Progress", 
-                                  "Please wait for the current LLM call to complete.")
+                QMessageBox.warning(self, "LLM Call In Progress", "Please wait for the current LLM call to complete.")
                 return
 
             # Get user input from dialog
@@ -1768,7 +1765,8 @@ class MainWindow(QMainWindow):
             # Widget was deleted
             return
 
-    def _get_widget_info(self, widget: ChatMessageWidget, expected_role: str = None):
+    @classmethod
+    def _get_widget_info(cls, widget: ChatMessageWidget, expected_role: str = None):
         """
         Helper to extract widget information: list_item, list_widget, and index.
         Returns (list_item, list_widget, index) or (None, None, -1) if invalid.
@@ -1804,7 +1802,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Find the next assistant message
-            assistant_item = None
+            # assistant_item = None
             assistant_index = -1
             for i in range(user_index + 1, list_widget.count()):
                 item = list_widget.item(i)
@@ -1995,8 +1993,8 @@ class MainWindow(QMainWindow):
         except (RuntimeError, AttributeError):
             return
 
-    def _create_drag_pixmap_and_exec(self, widget, item, file_path_str: str, display_name: str, 
-                                      icon, supported_actions):
+    @classmethod
+    def _create_drag_pixmap_and_exec(cls, widget, item, file_path_str: str, display_name: str, icon, supported_actions):
         """
         Helper to create custom drag pixmap and execute drag operation.
         
