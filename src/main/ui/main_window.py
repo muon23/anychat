@@ -2,7 +2,7 @@ import logging
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent, QMimeData
+from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent, QMimeData, QThread, Signal
 from PySide6.QtGui import (
     QResizeEvent, QKeyEvent, QWheelEvent, QFontMetrics, QShortcut, QKeySequence, QDragEnterEvent,
     QDragMoveEvent, QDropEvent
@@ -25,6 +25,27 @@ from llm_service import LLMService
 from refine_dialog import RefineDialog
 from spell_check_text_edit import SpellCheckTextEdit
 from system_message_dialog import SystemMessageDialog
+
+
+class LLMWorker(QThread):
+    """Worker thread for asynchronous LLM calls."""
+    finished = Signal(str)  # Emits response content
+    error = Signal(str)  # Emits error message
+    
+    def __init__(self, llm_service, model: str, messages: list):
+        super().__init__()
+        self.llm_service = llm_service
+        self.model = model
+        self.messages = messages
+    
+    def run(self):
+        """Execute LLM call in background thread."""
+        try:
+            response_content = self.llm_service.get_response(self.model, self.messages)
+            self.finished.emit(response_content)
+        except Exception as e:
+            error_message = f"Error: {e}"
+            self.error.emit(error_message)
 
 
 class MainWindow(QMainWindow):
@@ -57,6 +78,14 @@ class MainWindow(QMainWindow):
         # Store current messages to avoid re-reading from widgets
         self.current_messages: list[dict] = []
         self._focused_assistant_widget = None  # Track which assistant message is currently focused
+        self._llm_call_in_progress = False  # Track if an LLM call is in progress
+        self._llm_worker_thread = None  # Thread for async LLM calls
+        # Store pending LLM call context
+        self._pending_llm_widget = None
+        self._pending_llm_list_item = None
+        self._pending_llm_list_widget = None
+        self._pending_llm_model = None
+        self._pending_llm_thinking_bubble = None  # For handle_send_message
 
         self._load_ui()
 
@@ -1332,6 +1361,12 @@ class MainWindow(QMainWindow):
                                 "Please select a chat or create a new one before sending a message.")
             return
 
+        # Check if another LLM call is in progress
+        if self._llm_call_in_progress:
+            QMessageBox.warning(self, "LLM Call In Progress", 
+                              "Please wait for the current LLM call to complete.")
+            return
+
         message = self.messageInput.toPlainText().strip()
         model = self.modelComboBox.currentText()
         if not message:
@@ -1353,12 +1388,28 @@ class MainWindow(QMainWindow):
         thinking_bubble = self._add_chat_message("thinking", "...")
         QApplication.processEvents()  # Force UI to update
 
-        # 5. Call the LLM service with the current message history
-        try:
-            # self.current_messages was updated by _save_current_chat()
-            response_content = self.llm_service.get_response(model, list(self.current_messages))
+        # 5. Set flag and disable buttons
+        self._llm_call_in_progress = True
+        self._set_llm_buttons_enabled(False)
+        
+        # Store thinking bubble reference for callback
+        self._pending_llm_thinking_bubble = thinking_bubble
+        self._pending_llm_model = model
 
-            # 6. Update the "thinking" bubble with the real response
+        # 6. Call the LLM service asynchronously with the current message history
+        # self.current_messages was updated by _save_current_chat()
+        self._llm_worker_thread = LLMWorker(self.llm_service, model, list(self.current_messages))
+        self._llm_worker_thread.finished.connect(self._on_send_message_response_received)
+        self._llm_worker_thread.error.connect(self._on_send_message_error)
+        self._llm_worker_thread.start()
+    
+    def _on_send_message_response_received(self, response_content: str):
+        """Handle successful LLM response for send message."""
+        try:
+            thinking_bubble = self._pending_llm_thinking_bubble
+            model = self._pending_llm_model
+            
+            # Update the "thinking" bubble with the real response
             if thinking_bubble:
                 # Find the QListWidgetItem for the thinking bubble
                 for i in range(self.chatDisplay.count()):
@@ -1368,12 +1419,22 @@ class MainWindow(QMainWindow):
                         widget.set_message("assistant", response_content, item, model)
                         break
 
-            # 7. Save the chat *again* with the new AI response
+            # Save the chat *again* with the new AI response
             self._save_current_chat()
-
-        except Exception as e:
-            print(f"Error calling LLM: {e}")
-            error_message = f"Error: {e}"
+        finally:
+            # Clean up and re-enable buttons
+            self._llm_call_in_progress = False
+            self._set_llm_buttons_enabled(True)
+            self._llm_worker_thread = None
+            self._pending_llm_thinking_bubble = None
+            self._pending_llm_model = None
+    
+    def _on_send_message_error(self, error_message: str):
+        """Handle LLM error for send message."""
+        try:
+            thinking_bubble = self._pending_llm_thinking_bubble
+            model = self._pending_llm_model
+            
             if thinking_bubble:
                 for i in range(self.chatDisplay.count()):
                     item = self.chatDisplay.item(i)
@@ -1383,6 +1444,13 @@ class MainWindow(QMainWindow):
                         break
             # Save the error message to the chat
             self._save_current_chat()
+        finally:
+            # Clean up and re-enable buttons
+            self._llm_call_in_progress = False
+            self._set_llm_buttons_enabled(True)
+            self._llm_worker_thread = None
+            self._pending_llm_thinking_bubble = None
+            self._pending_llm_model = None
 
     def _handle_cut_message(self, widget: ChatMessageWidget):
         """Handle cut action: copy to clipboard, remove from chat history, and delete widget."""
@@ -1478,10 +1546,30 @@ class MainWindow(QMainWindow):
         
         return messages
     
+    def _set_llm_buttons_enabled(self, enabled: bool):
+        """Enable or disable buttons that trigger LLM calls."""
+        if self.sendButton:
+            self.sendButton.setEnabled(enabled)
+        # Disable regenerate buttons on all user message widgets
+        if self.chatDisplay:
+            for i in range(self.chatDisplay.count()):
+                item = self.chatDisplay.item(i)
+                if item:
+                    widget = self.chatDisplay.itemWidget(item)
+                    if isinstance(widget, ChatMessageWidget) and widget.role == "user":
+                        if hasattr(widget, 'regenerate_button'):
+                            widget.regenerate_button.setEnabled(enabled)
+    
     def _call_llm_and_update_widget(
             self, widget: ChatMessageWidget, list_item, list_widget, messages: list, model: str
     ):
-        """Helper to show thinking state, call LLM, update widget, and handle errors."""
+        """Helper to show thinking state, call LLM asynchronously, update widget, and handle errors."""
+        # Check if another LLM call is in progress
+        if self._llm_call_in_progress:
+            QMessageBox.warning(self, "LLM Call In Progress", 
+                              "Please wait for the current LLM call to complete.")
+            return
+        
         # Show "thinking" state in the existing bubble
         try:
             widget.set_message("thinking", "...", list_item)
@@ -1489,9 +1577,29 @@ class MainWindow(QMainWindow):
         except (RuntimeError, AttributeError):
             return
         
-        # Call LLM with the messages
+        # Set flag and disable buttons
+        self._llm_call_in_progress = True
+        self._set_llm_buttons_enabled(False)
+        
+        # Store widget references for callback
+        self._pending_llm_widget = widget
+        self._pending_llm_list_item = list_item
+        self._pending_llm_list_widget = list_widget
+        self._pending_llm_model = model
+        
+        # Create and start worker thread
+        self._llm_worker_thread = LLMWorker(self.llm_service, model, messages)
+        self._llm_worker_thread.finished.connect(self._on_llm_response_received)
+        self._llm_worker_thread.error.connect(self._on_llm_error)
+        self._llm_worker_thread.start()
+    
+    def _on_llm_response_received(self, response_content: str):
+        """Handle successful LLM response."""
         try:
-            response_content = self.llm_service.get_response(model, messages)
+            widget = self._pending_llm_widget
+            list_item = self._pending_llm_list_item
+            list_widget = self._pending_llm_list_widget
+            model = self._pending_llm_model
             
             # Replace the text in the existing bubble with the response
             try:
@@ -1511,10 +1619,24 @@ class MainWindow(QMainWindow):
                 self._save_current_chat()
             except (RuntimeError, AttributeError) as e:
                 print(f"Error updating widget: {e}")
-                return
-        
-        except Exception as e:
-            error_message = f"Error: {e}"
+        finally:
+            # Clean up and re-enable buttons
+            self._llm_call_in_progress = False
+            self._set_llm_buttons_enabled(True)
+            self._llm_worker_thread = None
+            self._pending_llm_widget = None
+            self._pending_llm_list_item = None
+            self._pending_llm_list_widget = None
+            self._pending_llm_model = None
+    
+    def _on_llm_error(self, error_message: str):
+        """Handle LLM error."""
+        try:
+            widget = self._pending_llm_widget
+            list_item = self._pending_llm_list_item
+            list_widget = self._pending_llm_list_widget
+            model = self._pending_llm_model
+            
             try:
                 widget.set_message("assistant", error_message, list_item, model)
                 list_widget.scrollToItem(list_item)
@@ -1522,6 +1644,15 @@ class MainWindow(QMainWindow):
                 self._save_current_chat()
             except (RuntimeError, AttributeError):
                 pass
+        finally:
+            # Clean up and re-enable buttons
+            self._llm_call_in_progress = False
+            self._set_llm_buttons_enabled(True)
+            self._llm_worker_thread = None
+            self._pending_llm_widget = None
+            self._pending_llm_list_item = None
+            self._pending_llm_list_widget = None
+            self._pending_llm_model = None
 
     def _handle_regenerate_message(self, widget: ChatMessageWidget):
         """Handle regenerate for assistant message: show refine dialog and refine/regenerate."""
@@ -1551,8 +1682,17 @@ class MainWindow(QMainWindow):
 
             # Show refine dialog
             dialog = RefineDialog(refine_prompt=refine_prompt, parent=self)
+            # Disable refine button if LLM call is in progress
+            if self._llm_call_in_progress:
+                dialog.set_refine_button_enabled(False)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 # User cancelled
+                return
+            
+            # Check again if LLM call started while dialog was open
+            if self._llm_call_in_progress:
+                QMessageBox.warning(self, "LLM Call In Progress", 
+                                  "Please wait for the current LLM call to complete.")
                 return
 
             # Get user input from dialog

@@ -41,6 +41,9 @@ class RefineDialog(QDialog):
         self.refine_button.clicked.connect(self.accept)
         button_layout.addWidget(self.refine_button)
         
+        # Store reference to parent to check LLM call status
+        self.parent_window = parent
+        
         # Add widgets to layout
         layout.addWidget(self.text_edit)
         layout.addLayout(button_layout)
@@ -56,4 +59,9 @@ class RefineDialog(QDialog):
     def get_refine_prompt(self) -> str:
         """Returns the refine prompt to use."""
         return self.refine_prompt
+    
+    def set_refine_button_enabled(self, enabled: bool):
+        """Enable or disable the refine button."""
+        if self.refine_button:
+            self.refine_button.setEnabled(enabled)
 
