@@ -714,6 +714,7 @@ class MainWindow(QMainWindow):
         chat_widget.cutBelowRequested.connect(self._on_cut_below_requested)
         chat_widget.regenerateRequested.connect(self._on_regenerate_requested)
         chat_widget.regenerateUserRequested.connect(self._on_regenerate_user_requested)
+        chat_widget.forkRequested.connect(self._on_fork_requested)
         # Connect focus signal to update modelComboBox
         chat_widget.focused.connect(self._on_message_focused)
 
@@ -737,11 +738,7 @@ class MainWindow(QMainWindow):
         self._focused_assistant_widget = None
         # Do NOT clear self.current_messages here
 
-    def _on_tree_item_selected(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
-        """Deprecated - use _on_projects_item_selected instead."""
-        self._on_projects_item_selected(current, previous)
-
-    def _on_projects_item_selected(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
+    def _on_projects_item_selected(self, current: QTreeWidgetItem):
         """
         Handles loading a chat when an item in the projects tree is clicked.
         """
@@ -988,7 +985,7 @@ class MainWindow(QMainWindow):
                 rename_action.triggered.connect(lambda: self.handle_rename_chat_item(item))
 
                 delete_action = context_menu.addAction("Delete")
-                delete_action.triggered.connect(lambda: self.handle_delete_chat_item(item))
+                delete_action.triggered.connect(lambda checked=False, it=item: self.handle_delete_chat_item(it))
 
         context_menu.exec(self.chatsList.viewport().mapToGlobal(position))
 
@@ -1087,12 +1084,37 @@ class MainWindow(QMainWindow):
 
     def handle_delete_chat_item(self, item: QListWidgetItem):
         """Handles the 'Delete' context menu action for chat list items."""
+        if not item:
+            return
+        
         try:
-            path_to_delete = Path(item.data(PathRole))
+            path_str = item.data(PathRole)
+            if not path_str:
+                QMessageBox.warning(self, "Error", "Could not get file path from item.")
+                return
+            
+            path_to_delete = Path(path_str)
+            if not path_to_delete.exists():
+                QMessageBox.warning(self, "Error", f"File does not exist: {path_to_delete}")
+                return
+            
+            # If this is the currently loaded chat, clear it first
+            if self.current_chat_file_path == path_to_delete:
+                self.current_chat_file_path = None
+                self.current_messages = []
+                self._clear_chat_display()
+                if self.messageInput:
+                    self.messageInput.setEnabled(False)
+            
             if self.chat_history_manager.delete_item(path_to_delete, self.show_delete_warning):
                 self._load_chat_history()
+            else:
+                # Delete was cancelled or failed
+                pass
         except Exception as e:
             print(f"Error during delete: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.warning(self, "Error", f"Could not delete item: {e}")
 
     def _start_inline_edit_tree_item(self, item: QTreeWidgetItem):
@@ -1763,6 +1785,96 @@ class MainWindow(QMainWindow):
                 self._handle_regenerate_message(sender)
         except (RuntimeError, AttributeError):
             # Widget was deleted
+            return
+
+    def _on_fork_requested(self):
+        """Slot for forkRequested signal - finds widget by sender to avoid capturing references."""
+        try:
+            sender = self.sender()
+            if sender and isinstance(sender, ChatMessageWidget):
+                # Check if widget is marked as deleted
+                if sender.is_deleted():
+                    return
+                self._handle_fork_message(sender)
+        except (RuntimeError, AttributeError):
+            # Widget was deleted
+            return
+
+    def _handle_fork_message(self, widget: ChatMessageWidget):
+        """Handle fork action - create a new chat with history up to and including the user message."""
+        if not self.current_chat_file_path:
+            QMessageBox.warning(self, "Fork Error", "No active chat to fork.")
+            return
+        
+        # Get widget info
+        try:
+            list_item, list_widget, item_index = self._get_widget_info(widget, expected_role="user")
+        except (RuntimeError, AttributeError, ValueError) as e:
+            QMessageBox.warning(self, "Fork Error", f"Could not find message: {e}")
+            return
+        
+        # Verify it's a user message
+        if widget.role != "user":
+            QMessageBox.warning(self, "Fork Error", "Fork can only be used on user messages.")
+            return
+        
+        # Build messages list up to and including this user message
+        messages = self._build_messages_list(list_widget, item_index, include_end=True)
+        
+        # Preserve the current modelComboBox value
+        current_model = None
+        if self.modelComboBox:
+            current_model = self.modelComboBox.currentText()
+        
+        # Determine the parent directory (where to create the new chat)
+        parent_dir = self.current_chat_file_path.parent
+        
+        # Get the base name without extension
+        base_name = self.current_chat_file_path.stem
+        
+        # Find the next available name "XXXX-N"
+        n = 1
+        while True:
+            new_chat_name = f"{base_name}-{n}"
+            new_chat_path = parent_dir / f"{new_chat_name}.json"
+            if not new_chat_path.exists():
+                break
+            n += 1
+        
+        # Create and save the new chat file
+        try:
+            self.chat_history_manager.save_chat(new_chat_path, messages)
+            
+            # Reload chat history to show the new chat
+            self._load_chat_history()
+            
+            # Select the new chat
+            # Check if it's in projects tree or chats list
+            if parent_dir == self.chat_history_manager.history_root:
+                # Top-level chat - select in chats list
+                for i in range(self.chatsList.count()):
+                    item = self.chatsList.item(i)
+                    if item and item.data(PathRole) == str(new_chat_path):
+                        self.chatsList.setCurrentItem(item)
+                        self.chatsList.scrollToItem(item)
+                        # Manually trigger selection to load the chat
+                        self._on_chats_item_selected(item, None)
+                        break
+            else:
+                # Project chat - select in projects tree
+                self._select_item_by_path(new_chat_path)
+                # Manually trigger selection to load the chat
+                selected_item = self.projectsTree.currentItem()
+                if selected_item:
+                    self._on_projects_item_selected(selected_item)
+            
+            # Restore the modelComboBox value after loading
+            if self.modelComboBox and current_model:
+                index = self.modelComboBox.findText(current_model)
+                if index >= 0:
+                    self.modelComboBox.setCurrentIndex(index)
+        except Exception as e:
+            QMessageBox.warning(self, "Fork Error", f"Could not create forked chat: {e}")
             return
 
     @classmethod

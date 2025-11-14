@@ -127,7 +127,7 @@ class ChatMessageWidget(QWidget):
         # Create buttons with text labels (we'll use simple text for now, can be replaced with icons)
         self.fork_button = QPushButton("🔀", self.button_container)
         self.fork_button.setObjectName("forkButton")
-        self.fork_button.setToolTip("Fork (to be implemented)")
+        self.fork_button.setToolTip("Fork chat (create new chat with history up to this message)")
         self.fork_button.setFixedSize(24, 24)
         # Use opacity to make the entire button (including emoji) translucent
         opacity_effect = QGraphicsOpacityEffect()
@@ -149,7 +149,7 @@ class ChatMessageWidget(QWidget):
             }
         """)
         self.fork_button.clicked.connect(self.forkRequested.emit)
-        self.fork_button.setEnabled(False)  # Disabled until implemented
+        self.fork_button.setEnabled(True)  # Enabled - fork functionality implemented
         
         self.copy_button = QPushButton("📋", self.button_container)
         self.copy_button.setObjectName("copyButton")
