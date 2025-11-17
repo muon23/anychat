@@ -23,6 +23,7 @@ class GptLlm(Llm):
 
     # Model metadata, including token limits and aliases
     __MODELS = {
+        "gpt-5.1": {"token_limit": 400_000},
         "gpt-5": {"token_limit": 400_000},
         "gpt-4.1": {},
         "o3-mini": {"aliases": ["gpt-o3", "o3-mini"]},

@@ -2,7 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
-from langchain.tools import tool
+from langchain_core.tools import tool
 
 
 class SqlQuery(ABC):

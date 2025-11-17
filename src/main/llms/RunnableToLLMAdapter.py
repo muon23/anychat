@@ -1,6 +1,6 @@
 from typing import Union, Any, Optional
 
-from langchain.agents import AgentExecutor  # This is needed!  Or pydantic will complain
+from langchain_classic.agents import AgentExecutor  # This is needed!  Or pydantic will complain
 from langchain_core.language_models import BaseLanguageModel, LanguageModelInput
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult

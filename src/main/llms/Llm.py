@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Sequence, Any, List, Dict
 
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain.agents import create_agent
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -84,7 +84,8 @@ class Llm(ABC):
         arguments = kwargs.get("arguments", {})
 
         # Create a sequential chain: Prompt -> LLM -> Response Cleanup
-        chain = RunnableSequence(prompt | self.llm | self.clean_up_response)
+        # Type: ignore because clean_up_response is a method, but RunnableLambda accepts callables
+        chain = RunnableSequence(prompt | self.llm | RunnableLambda(self.clean_up_response))  # type: ignore[arg-type]
 
         # Task, e.g., chat or completion.
         # Some LLM models need to distinguish chat or completion.
@@ -244,56 +245,85 @@ class Llm(ABC):
 
     @classmethod
     def _make_agent_runnable(cls, llm, tools, system_prompt: str = "You are helpful.") -> Runnable:
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("placeholder", "{chat_history}"),
-            ("human", "{input}"),
-            ("placeholder", "{agent_scratchpad}"),
-        ])
-        agent = create_tool_calling_agent(llm, tools, prompt)
-
-        # Return intermediate steps so we can summarize tools/sources
-        executor = AgentExecutor(
-            agent=agent,
+        # Create agent using new LangChain 1.0 API
+        # create_agent takes model, tools, and system_prompt directly
+        # Type: ignore because BaseLanguageModel is compatible (BaseChatModel extends it)
+        agent = create_agent(
+            model=llm,  # type: ignore[arg-type]
             tools=tools,
-            verbose=False,
-            return_intermediate_steps=True,
+            system_prompt=system_prompt,
         )
 
         def _invoke(x):
-            result: Dict[str, Any] = executor.invoke({"input": x, "chat_history": []})
-            output_text = result.get("output", "")
-
-            # Put in more information for troubleshooting
-            steps = result.get("intermediate_steps", [])  # list of (AgentAction, observation)
+            from langchain_core.messages import HumanMessage
+            
+            # The new agent expects messages as input
+            # x can be a string or a dict with "input" and "chat_history"
+            if isinstance(x, str):
+                messages = [HumanMessage(content=x)]
+                chat_history = []
+            elif isinstance(x, dict):
+                input_text = x.get("input", "")
+                chat_history = x.get("chat_history", [])
+                messages = chat_history + [HumanMessage(content=input_text)]
+            else:
+                messages = [HumanMessage(content=str(x))]
+                chat_history = []
+            
+            # Invoke the agent (returns state with messages)
+            # Type: ignore because LangGraph state graph accepts dict with "messages" key
+            result_state: Dict[str, Any] = agent.invoke({"messages": messages})  # type: ignore[arg-type]
+            
+            # Extract the last AI message as the output
+            output_messages = result_state.get("messages", [])
+            if output_messages:
+                last_message = output_messages[-1]
+                output_text = last_message.content if hasattr(last_message, 'content') else str(last_message)
+            else:
+                output_text = ""
+            
+            # Extract intermediate steps from state if available
+            # The new agent stores tool calls in the messages themselves
+            steps = result_state.get("intermediate_steps", [])
             tools_used: List[str] = []
             sources: List[str] = []
-
-            for action, observation in steps:
-                # action.tool and action.tool_input exist for tool-calling agents
-                tool_name = getattr(action, "tool", None)
-                if tool_name:
-                    tools_used.append(tool_name)
-
-                # try to extract URLs from your WebSearch tool’s observation (list[dict])
-                sources.extend(Llm._extract_sources_from_observation(observation))
-
+            
+            # Extract tool calls from messages
+            for msg in output_messages:
+                # Check if message has tool calls (new format)
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    for tool_call in msg.tool_calls:
+                        tool_name = tool_call.get('name') if isinstance(tool_call, dict) else getattr(tool_call, 'name', None)
+                        if tool_name:
+                            tools_used.append(tool_name)
+            
+            # Also check intermediate_steps if available (for backward compatibility)
+            for step in steps:
+                if isinstance(step, tuple) and len(step) >= 2:
+                    action, observation = step[0], step[1]
+                    tool_name = getattr(action, "tool", None)
+                    if tool_name:
+                        tools_used.append(tool_name)
+                    sources.extend(Llm._extract_sources_from_observation(observation))
+            
             # dedupe but keep order
             def _dedupe(seq): return list(dict.fromkeys(seq))
             tools_used = _dedupe(tools_used)
             sources = _dedupe(sources)
-
-            # Optional compact trace (be careful not to bloat tokens)
+            
+            # Optional compact trace
             compact_trace = []
-            for action, observation in steps:
-                tool_name = getattr(action, "tool", None)
-                tool_args = getattr(action, "tool_input", None)
-                compact_trace.append({
-                    "tool": tool_name,
-                    "args_preview": str(tool_args)[:200] if tool_args is not None else None,
-                    "obs_preview": (observation[:200] if isinstance(observation, str) else None)
-                })
-
+            for step in steps:
+                if isinstance(step, tuple) and len(step) >= 2:
+                    action, observation = step[0], step[1]
+                    tool_name = getattr(action, "tool", None)
+                    tool_args = getattr(action, "tool_input", None)
+                    compact_trace.append({
+                        "tool": tool_name,
+                        "args_preview": str(tool_args)[:200] if tool_args is not None else None,
+                        "obs_preview": (observation[:200] if isinstance(observation, str) else None)
+                    })
+            
             meta = {
                 "agent_executor": "tool_calling",
                 "model": getattr(llm, "model_name", getattr(llm, "model", None)),
@@ -301,15 +331,15 @@ class Llm(ABC):
                 "tools_used": tools_used,
                 "sources": sources,
             }
-
+            
             return AIMessage(
                 id=str(uuid.uuid4()),
                 content=output_text,
                 response_metadata=meta,
-                # keep the big stuff out of `additional_kwargs` if you worry about token bloat
                 additional_kwargs={"trace": compact_trace} if compact_trace else {},
             )
-
-        return RunnableLambda(_invoke)
+        
+        # RunnableLambda can handle functions that return single values (not just iterators)
+        return RunnableLambda(_invoke)  # type: ignore[arg-type]
 
 

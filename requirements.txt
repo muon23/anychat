@@ -1,13 +1,17 @@
 # UI Framework
 PySide6>=6.0.0
 markdown>=3.4.0
+torch>=2.8.0
 
 # LangChain - Core and integrations
-langchain>=0.3.27
-langchain-core>=0.3.79
-langchain-openai>=0.3.35
-langchain-google-genai>=2.1.12
-langchain-text-splitters>=0.3.11
+langchain>=1.0.7
+langchain-core>=1.0.5
+langgraph>=1.0.0
+langchain-classic>=1.0.0  # Still needed for RunnableToLLMAdapter Pydantic compatibility
+langchain-community>=0.4.1  # Third-party integrations and community tools
+langchain-openai>=1.0.3
+langchain-google-genai>=3.0.3
+langchain-text-splitters>=1.0.0
 
 # HuggingFace
 transformers>=4.57.0

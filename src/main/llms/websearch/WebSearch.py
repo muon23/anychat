@@ -8,7 +8,7 @@ from typing import Optional
 
 import httpx  # pip install httpx trafilatura pypdf duckduckgo-search
 import trafilatura
-from langchain.tools import tool
+from langchain_core.tools import tool
 from pypdf import PdfReader
 
 

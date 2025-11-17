@@ -1,7 +1,7 @@
 import unittest
 from typing import List
 
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents import create_agent
 from langchain_core.prompt_values import StringPromptValue
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import Tool
@@ -98,21 +98,33 @@ class RunnableToLLMAdapterTest(unittest.TestCase):
             Final Answer: [Your complete response]
             """)
 
-        # Create the ReAct agent
-        agent = create_react_agent(
-            llm=llm,
+        # Create agent using new LangChain 1.0 API
+        # Note: The new create_agent doesn't use PromptTemplate the same way
+        # It uses system_prompt instead. For this test, we'll extract the system message
+        system_prompt = """
+            You are an AI agent tasked with answering questions. You have access to tools.
+            
+            Follow these steps:
+            1. Determine if the question can be answered directly or if it requires additional information.
+            2. If additional information is needed, use the available tools.
+            3. Combine all the information to provide a final answer.
+        """
+        
+        # Type: ignore because BaseLanguageModel is compatible (BaseChatModel extends it)
+        agent = create_agent(
+            model=llm,  # type: ignore[arg-type]
             tools=tools,
-            prompt=prompt
+            system_prompt=system_prompt
         )
 
-        # Wrap the agent in an executor
-        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-
-        # Execute a query
-        result = agent_executor.invoke({
-            "input": "What was the company's profit margin trend over the last 3 quarters?  Today: 2Q25",
-            "context": "The company is a tech startup operating in the SaaS industry."
+        # Execute a query - new API expects messages
+        from langchain_core.messages import HumanMessage
+        result_state = agent.invoke({
+            "messages": [HumanMessage(content="What was the company's profit margin trend over the last 3 quarters?  Today: 2Q25")]
         })
+        
+        # Extract result from state
+        result = result_state.get("messages", [])[-1].content if result_state.get("messages") else ""
         print(result)
 
         self.assertEqual(True, True)  # add assertion here

@@ -1,9 +1,8 @@
 from typing import Optional
 
 from huggingface_hub import InferenceClient
-from langchain.schema.runnable import Runnable
 from langchain_core.messages.utils import convert_to_messages, convert_to_openai_messages
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import Input
 
 
