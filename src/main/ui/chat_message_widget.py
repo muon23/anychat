@@ -62,6 +62,12 @@ class ChatMessageWidget(QWidget):
         self._display_mode = "rendered"  # "rendered" or "raw"
         self._raw_content = ""  # Store raw content for mode switching
         
+        # Animation timer for thinking indicator
+        self._thinking_timer = QTimer(self)
+        self._thinking_timer.timeout.connect(self._update_thinking_animation)
+        self._thinking_dot_count = 1
+        self._thinking_direction = 1  # 1 = increasing, -1 = decreasing
+        
         # Create button container and buttons (including resize button)
         self._create_action_buttons()
 
@@ -598,10 +604,25 @@ class ChatMessageWidget(QWidget):
         self._custom_width = None
         self._custom_height = None
         
+        # Stop thinking animation if role is changing away from "thinking"
+        if self.role == "thinking" and role != "thinking":
+            self._thinking_timer.stop()
+        
         # For assistant messages, default to rendered mode
         if role == "assistant":
             self._display_mode = "rendered"
             self._update_display_mode()
+        elif role == "thinking":
+            # For thinking messages, show animated dots
+            self.ui.messageContent.setPlainText(".")
+            self._thinking_dot_count = 1
+            self._thinking_direction = 1  # Start by increasing
+            # Start animation timer (update every 500ms)
+            self._thinking_timer.start(500)
+            # Disable editing for thinking messages
+            if isinstance(self.ui.messageContent, SpellCheckTextEdit):
+                self.ui.messageContent.setReadOnly(True)
+                self.ui.messageContent.setAcceptRichText(False)
         else:
             # For user messages, always use plain text
             self.ui.messageContent.setPlainText(content)
@@ -693,8 +714,41 @@ class ChatMessageWidget(QWidget):
             self.copy_button.setVisible(False)
             self.cut_button.setVisible(False)
             self.mode_toggle_button.setVisible(False)
+            # Stop thinking animation if role is not "thinking"
+            if role != "thinking":
+                self._thinking_timer.stop()
 
         self.update_size()
+    
+    def _update_thinking_animation(self):
+        """Update the thinking indicator animation (cycles through 1, 2, 3, 2, 1 dots)."""
+        if self.role != "thinking" or not self.ui.messageContent:
+            self._thinking_timer.stop()
+            return
+        
+        # Cycle through: 1, 2, 3, 2, 1, 1, 2, 3, 2, 1, ...
+        # This creates a smooth pulsing effect
+        # Use direction to track whether we're increasing or decreasing
+        if self._thinking_dot_count == 1:
+            self._thinking_dot_count = 2
+            self._thinking_direction = 1  # Going up
+        elif self._thinking_dot_count == 2:
+            if self._thinking_direction == 1:
+                self._thinking_dot_count = 3  # Continue up
+            else:
+                self._thinking_dot_count = 1  # Go back down
+                self._thinking_direction = 1  # Reset to going up
+        elif self._thinking_dot_count == 3:
+            self._thinking_dot_count = 2
+            self._thinking_direction = -1  # Start going down
+        else:
+            # Fallback: reset to 1
+            self._thinking_dot_count = 1
+            self._thinking_direction = 1
+        
+        # Update the text with the appropriate number of dots
+        dots = "." * self._thinking_dot_count
+        self.ui.messageContent.setPlainText(dots)
     
     def _on_mode_toggle_clicked(self):
         """Handle mode toggle button click - switch between rendered and raw modes."""
