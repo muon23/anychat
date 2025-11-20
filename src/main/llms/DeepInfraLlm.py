@@ -90,7 +90,7 @@ class DeepInfraLlm(Llm):
     def clean_up_response(self, response: Any) -> Llm.Response:
         if isinstance(response, AIMessage):
             return Llm.Response(
-                text=response.text(),
+                text=response.text,
                 citations=response.response_metadata.get("sources"),
                 raw=response
             )

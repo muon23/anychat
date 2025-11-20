@@ -106,7 +106,7 @@ class GeminiLlm(Llm):
         """
         if isinstance(response, AIMessage):
             return Llm.Response(
-                text=response.text(),
+                text=response.text,
                 raw=response
             )
 
