@@ -106,12 +106,12 @@ class GeminiLlm(Llm):
         """
         if isinstance(response, AIMessage):
             return Llm.Response(
-                text=response.content,
+                text=response.text(),
                 raw=response
             )
 
         else:
-            raise TypeError(f"Unsupported return type for GptLlm.invoke() (was {type(response)})")
+            raise TypeError(f"Unsupported return type for GeminiLlm.invoke() (was {type(response)})")
 
     def get_num_tokens(self, text: str) -> int:
         """
