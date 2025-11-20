@@ -2001,11 +2001,9 @@ class MainWindow(QMainWindow):
                 # No assistant message found, can't regenerate
                 return
 
-            # Get the model to use
-            try:
-                model = assistant_widget.model if assistant_widget.model else self.modelComboBox.currentText()
-            except (RuntimeError, AttributeError):
-                model = self.modelComboBox.currentText()
+            # Get the model to use from the combo box (user may have changed it)
+            # This allows user to regenerate with a different model than the original
+            model = self.modelComboBox.currentText()
 
             # Build message history up to and including the user message
             messages_before = self._build_messages_list(list_widget, user_index, include_end=True)
