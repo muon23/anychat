@@ -8,7 +8,7 @@ from typing import Sequence, Any, List, Dict
 
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseLanguageModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence, Runnable, RunnableConfig, RunnableLambda
 from transformers import AutoTokenizer
@@ -64,13 +64,15 @@ class Llm(ABC):
         # Use GPT-2 tokenizer as a robust, universal approximation for token counting
         self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
-    def invoke(self, prompt: Sequence[tuple[Role | str, str] | str] | str, **kwargs) -> Response:
+    def invoke(self, prompt: Sequence[tuple[Role | str, str] | str] | Sequence[BaseMessage] | str, **kwargs) -> Response:
         """
         Processes the prompt, executes the LLM chain, and returns the cleaned response.
 
         Args:
-            prompt: The input prompt. Can be a simple string or a sequence of
-                    (Role/role_name, content) tuples representing chat history.
+            prompt: The input prompt. Can be:
+                    - A simple string
+                    - A sequence of (Role/role_name, content) tuples representing chat history
+                    - A sequence of LangChain BaseMessage objects (HumanMessage, SystemMessage, AIMessage, etc.)
             **kwargs: Additional arguments passed to the chain, including
                       'arguments' (for prompt template values) and 'task' (for metadata).
 
@@ -98,7 +100,7 @@ class Llm(ABC):
 
         return response
 
-    def preprocess_prompt(self, prompt: Sequence[tuple[Role | str, str] | str] | str) -> ChatPromptTemplate:
+    def preprocess_prompt(self, prompt: Sequence[tuple[Role | str, str] | str] | Sequence[BaseMessage] | str) -> ChatPromptTemplate:
         """
         Converts various input prompt formats into a standardized ChatPromptTemplate.
         
@@ -137,6 +139,55 @@ class Llm(ABC):
             # This handles single instruction prompts
             human_role_name = self.role_names[self.Role.HUMAN]
             return ChatPromptTemplate(messages=[(human_role_name, escape_code_blocks(prompt))])
+        elif len(prompt) > 0 and isinstance(prompt[0], BaseMessage):
+            # Handle Sequence[BaseMessage] - convert BaseMessage objects to (role, content) tuples
+            messages = []
+            for msg in prompt:
+                # Map BaseMessage types to role names
+                if isinstance(msg, SystemMessage):
+                    role_name = self.role_names[self.Role.SYSTEM]
+                elif isinstance(msg, HumanMessage):
+                    role_name = self.role_names[self.Role.HUMAN]
+                elif isinstance(msg, AIMessage):
+                    role_name = self.role_names[self.Role.AI]
+                else:
+                    # For other BaseMessage subclasses, try to get the type from the message
+                    # Most BaseMessage subclasses have a 'type' attribute
+                    msg_type = getattr(msg, 'type', 'human')
+                    # Map common message types to role names
+                    if msg_type == 'system':
+                        role_name = self.role_names[self.Role.SYSTEM]
+                    elif msg_type == 'human' or msg_type == 'user':
+                        role_name = self.role_names[self.Role.HUMAN]
+                    elif msg_type == 'ai' or msg_type == 'assistant':
+                        role_name = self.role_names[self.Role.AI]
+                    else:
+                        # Default to human if unknown
+                        role_name = self.role_names[self.Role.HUMAN]
+                
+                # Extract content from the message
+                # Content might be a string, list (for multimodal), or other type
+                raw_content = msg.content if hasattr(msg, 'content') else str(msg)
+                # Convert to string if needed (handles multimodal content)
+                if isinstance(raw_content, str):
+                    content = raw_content
+                elif isinstance(raw_content, list):
+                    # For multimodal content, extract text parts and join them
+                    text_parts = []
+                    for part in raw_content:
+                        if isinstance(part, str):
+                            text_parts.append(part)
+                        elif isinstance(part, dict) and 'text' in part:
+                            text_parts.append(part['text'])
+                        else:
+                            text_parts.append(str(part))
+                    content = '\n'.join(text_parts)
+                else:
+                    content = str(raw_content)
+                # Escape curly braces inside code blocks only
+                escaped_content = escape_code_blocks(content)
+                messages.append((role_name, escaped_content))
+            return ChatPromptTemplate(messages=messages)
         else:
             # Reformat the sequence of (Role, content) tuples into LangChain messages
             messages = []
