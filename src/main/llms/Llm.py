@@ -4,7 +4,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Sequence, Any, List, Dict
+from typing import Sequence, Any, List, Dict, Literal
 
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseLanguageModel
@@ -64,7 +64,11 @@ class Llm(ABC):
         # Use GPT-2 tokenizer as a robust, universal approximation for token counting
         self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
-    def invoke(self, prompt: Sequence[tuple[Role | str, str] | str] | Sequence[BaseMessage] | str, **kwargs) -> Response:
+    def invoke(
+            self,
+            prompt: Sequence[tuple[Role | str, str] | str] | Sequence[BaseMessage] | str,
+            **kwargs
+    ) -> Response:
         """
         Processes the prompt, executes the LLM chain, and returns the cleaned response.
 
@@ -80,7 +84,8 @@ class Llm(ABC):
             A dictionary containing the cleaned response from the LLM.
         """
         # Format the prompt into a LangChain ChatPromptTemplate object
-        prompt = self.preprocess_prompt(prompt)
+        prompt_format = kwargs.pop("prompt_format", "f-string")
+        prompt = self.preprocess_prompt(prompt, prompt_format)
 
         # Prompt template parameters for filling holes in the prompt
         arguments = kwargs.get("arguments", {})
@@ -100,7 +105,11 @@ class Llm(ABC):
 
         return response
 
-    def preprocess_prompt(self, prompt: Sequence[tuple[Role | str, str] | str] | Sequence[BaseMessage] | str) -> ChatPromptTemplate:
+    def preprocess_prompt(
+            self,
+            prompt: Sequence[tuple[Role | str, str] | str] | Sequence[BaseMessage] | str,
+            prompt_format: Literal["f-string", "mustache", "jinja2"]
+    ) -> ChatPromptTemplate:
         """
         Converts various input prompt formats into a standardized ChatPromptTemplate.
         
@@ -138,7 +147,7 @@ class Llm(ABC):
         if isinstance(prompt, str):
             # This handles single instruction prompts
             human_role_name = self.role_names[self.Role.HUMAN]
-            return ChatPromptTemplate(messages=[(human_role_name, escape_code_blocks(prompt))])
+            return ChatPromptTemplate(messages=[(human_role_name, escape_code_blocks(prompt))], template_format=prompt_format)
         elif len(prompt) > 0 and isinstance(prompt[0], BaseMessage):
             # Handle Sequence[BaseMessage] - convert BaseMessage objects to (role, content) tuples
             messages = []
@@ -187,7 +196,7 @@ class Llm(ABC):
                 # Escape curly braces inside code blocks only
                 escaped_content = escape_code_blocks(content)
                 messages.append((role_name, escaped_content))
-            return ChatPromptTemplate(messages=messages)
+            return ChatPromptTemplate(messages=messages, template_format=prompt_format)
         else:
             # Reformat the sequence of (Role, content) tuples into LangChain messages
             messages = []
@@ -196,7 +205,7 @@ class Llm(ABC):
                 # Escape curly braces inside code blocks only
                 escaped_content = escape_code_blocks(msg[1])
                 messages.append((role_name, escaped_content))
-            return ChatPromptTemplate(messages=messages)
+            return ChatPromptTemplate(messages=messages, template_format=prompt_format)
 
     @abstractmethod
     def clean_up_response(self, response: Any) -> Response:
