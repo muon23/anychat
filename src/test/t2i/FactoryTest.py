@@ -17,6 +17,7 @@ from t2i.DallEImageGenerator import DallEImageGenerator
 from t2i.DeepInfraImageGenerator import DeepInfraImageGenerator
 from t2i.ReplicateImageGenerator import ReplicateImageGenerator
 from t2i.GeminiImageGenerator import GeminiImageGenerator
+from t2i.MockImageGenerator import MockImageGenerator
 
 
 class FactoryTest(unittest.TestCase):
@@ -105,6 +106,18 @@ class FactoryTest(unittest.TestCase):
             generator = t2i.of("gemini-3-image")
             self.assertIsInstance(generator, GeminiImageGenerator)
             self.assertEqual(generator.get_model_name(), "gemini-3-pro-image-preview")
+
+    def test_factory_function_with_mock(self):
+        """Test factory function creates MockImageGenerator for mock."""
+        generator = t2i.of("mock")
+        self.assertIsInstance(generator, MockImageGenerator)
+        self.assertEqual(generator.get_model_name(), "mock")
+
+    def test_factory_function_with_mock_alias(self):
+        """Test factory function creates MockImageGenerator for mock aliases."""
+        generator = t2i.of("test")
+        self.assertIsInstance(generator, MockImageGenerator)
+        self.assertEqual(generator.get_model_name(), "mock")
 
     def test_factory_function_invalid_model(self):
         """Test factory function raises RuntimeError for invalid model."""
