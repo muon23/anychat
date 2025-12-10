@@ -7,7 +7,8 @@ from typing import List
 
 from langchain_community.utilities.dalle_image_generator import DallEAPIWrapper
 
-from t2i.ImageGenerator import ImageGenerator, ImageResponse
+from t2i.ImageGenerator import ImageGenerator
+from t2i.ImageResponse import ImageResponse
 
 
 class DallEImageGenerator(ImageGenerator):
@@ -122,16 +123,23 @@ class DallEImageGenerator(ImageGenerator):
                 
                 image_url = response.data[0].url
                 revised_prompt = response.data[0].revised_prompt if hasattr(response.data[0], 'revised_prompt') else None
+                
+                return ImageResponse(
+                    image_type="url",
+                    image=image_url,
+                    revised_prompt=revised_prompt,
+                    raw=response,
+                )
             else:
                 # Use LangChain wrapper for dall-e-2
                 image_url = self.wrapper.run(prompt)
-                revised_prompt = None
-            
-            return ImageResponse(
-                image_url=image_url,
-                revised_prompt=revised_prompt,
-                raw=response,
-            )
+                
+                return ImageResponse(
+                    image_type="url",
+                    image=image_url,
+                    revised_prompt=None,
+                    raw=None,
+                )
         except Exception as e:
             logging.error(f"Error generating image with DALL-E: {e}")
             raise

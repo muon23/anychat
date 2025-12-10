@@ -9,7 +9,69 @@ from typing import List
 
 import replicate
 
-from t2i.ImageGenerator import ImageGenerator, ImageResponse
+from t2i.ImageGenerator import ImageGenerator
+from t2i.ImageResponse import ImageResponse, _detect_image_type
+
+
+def _is_base64_string(s: str) -> bool:
+    """
+    Check if a string is base64-encoded data.
+    
+    Args:
+        s: String to check
+        
+    Returns:
+        True if the string appears to be base64-encoded
+    """
+    if not isinstance(s, str):
+        return False
+    
+    # Remove whitespace for checking
+    s_clean = s.strip()
+    
+    # Base64 strings are typically longer (at least 100 chars for images)
+    # Check if it starts with base64-encoded JPEG magic bytes (/9j/)
+    # This is the most reliable indicator for image data
+    if s_clean.startswith('/9j/'):
+        return True
+    
+    # For other cases, check if it's a long base64-like string
+    if len(s_clean) > 100:
+        # Check if it contains mostly base64 characters
+        base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+        non_base64_count = sum(1 for c in s_clean if c not in base64_chars and not c.isspace())
+        # Allow some non-base64 chars (like whitespace, but not too many)
+        if non_base64_count < len(s_clean) * 0.1:  # Less than 10% non-base64 chars
+            # Try to decode a sample to verify it's valid base64
+            try:
+                # Take first 200 chars and pad if needed
+                sample = s_clean[:200].replace(' ', '').replace('\n', '').replace('\r', '')
+                # Pad to multiple of 4
+                padding = (4 - len(sample) % 4) % 4
+                sample += '=' * padding
+                base64.b64decode(sample, validate=True)
+                return True
+            except Exception:
+                return False
+    
+    return False
+
+
+def _is_url(s: str) -> bool:
+    """
+    Check if a string is a URL.
+    
+    Args:
+        s: String to check
+        
+    Returns:
+        True if the string appears to be a URL
+    """
+    if not isinstance(s, str):
+        return False
+    
+    # Simple URL check - starts with http:// or https://
+    return s.startswith('http://') or s.startswith('https://')
 
 
 class ReplicateImageGenerator(ImageGenerator):
@@ -80,9 +142,6 @@ class ReplicateImageGenerator(ImageGenerator):
                 input={"prompt": prompt, **kwargs}
             )
             
-            image_url = None
-            image_base64 = None
-            
             # Replicate returns an iterator that yields chunks
             # We need to collect all chunks to get the complete image
             chunks = []
@@ -96,35 +155,61 @@ class ReplicateImageGenerator(ImageGenerator):
             first_chunk = chunks[0]
             
             if isinstance(first_chunk, bytes):
-                # Binary image data - combine all chunks and convert to base64
+                # Binary image data - combine all chunks
                 image_data = b''.join(chunks)
-                image_base64 = base64.b64encode(image_data).decode('utf-8')
-            elif isinstance(first_chunk, str):
-                # URL string - take the first one (or combine if multiple)
-                if len(chunks) == 1:
-                    url = chunks[0]
-                else:
-                    # Multiple URLs, take the first
-                    url = chunks[0]
+                image_type = _detect_image_type(image_data)
                 
-                if url.startswith(('http://', 'https://')):
-                    image_url = url
+                return ImageResponse(
+                    image_type=image_type,
+                    image=image_data,
+                    revised_prompt=None,  # Replicate doesn't provide revised prompts
+                    raw=chunks,  # Store all chunks as raw data
+                )
+            elif isinstance(first_chunk, str):
+                # String data - could be URL or base64-encoded image
+                if len(chunks) == 1:
+                    data_str = chunks[0]
                 else:
-                    # Might be a file path or other string, treat as URL
-                    image_url = url
+                    # Multiple chunks - combine them (for base64 strings that might be split)
+                    data_str = ''.join(chunks)
+                
+                # Check if it's base64-encoded image data
+                if _is_base64_string(data_str):
+                    # Decode base64 to bytes
+                    try:
+                        image_data = base64.b64decode(data_str)
+                        image_type = _detect_image_type(image_data)
+                        
+                        return ImageResponse(
+                            image_type=image_type,
+                            image=image_data,
+                            revised_prompt=None,  # Replicate doesn't provide revised prompts
+                            raw=chunks,  # Store all chunks as raw data
+                        )
+                    except Exception as e:
+                        logging.warning(f"Failed to decode base64 string: {e}. Treating as URL.")
+                        # Fall through to URL handling
+                
+                # Check if it's a URL
+                if _is_url(data_str):
+                    return ImageResponse(
+                        image_type="url",
+                        image=data_str,
+                        revised_prompt=None,  # Replicate doesn't provide revised prompts
+                        raw=chunks,  # Store all chunks as raw data
+                    )
+                
+                # If we can't determine, assume it's a URL (legacy behavior)
+                logging.warning(f"Unrecognized string format from Replicate, treating as URL: {data_str[:50]}...")
+                return ImageResponse(
+                    image_type="url",
+                    image=data_str,
+                    revised_prompt=None,  # Replicate doesn't provide revised prompts
+                    raw=chunks,  # Store all chunks as raw data
+                )
             else:
                 # Unexpected type
                 raise ValueError(f"Unexpected data type from Replicate: {type(first_chunk)}")
-            
-            if not image_url and not image_base64:
-                raise ValueError("No image data (URL or binary) in Replicate response")
-            
-            return ImageResponse(
-                image_url=image_url,
-                image_base64=image_base64,
-                revised_prompt=None,  # Replicate doesn't provide revised prompts
-                raw=chunks,  # Store all chunks as raw data
-            )
         except Exception as e:
             logging.error(f"Error generating image with Replicate: {e}")
             raise

@@ -2,19 +2,9 @@
 Abstract base class for image generation models.
 """
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, List, Optional, Dict
+from typing import List, Dict
 
-
-@dataclass
-class ImageResponse:
-    """
-    Standardized structure for image generation responses across all provider subclasses.
-    """
-    image_url: Optional[str] = None
-    image_base64: Optional[str] = None
-    revised_prompt: Optional[str] = None
-    raw: Any = None
+from t2i.ImageResponse import ImageResponse
 
 
 class ImageGenerator(ABC):

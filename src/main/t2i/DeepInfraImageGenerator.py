@@ -8,7 +8,8 @@ from typing import List
 
 import httpx
 
-from t2i.ImageGenerator import ImageGenerator, ImageResponse
+from t2i.ImageGenerator import ImageGenerator
+from t2i.ImageResponse import ImageResponse, _detect_image_type
 
 
 class DeepInfraImageGenerator(ImageGenerator):
@@ -134,15 +135,22 @@ class DeepInfraImageGenerator(ImageGenerator):
             
             if image_base64:
                 # Base64 format (preferred for FLUX models)
+                # Decode base64 to bytes and detect type
+                import base64
+                image_bytes = base64.b64decode(image_base64)
+                image_type = _detect_image_type(image_bytes)
+                
                 return ImageResponse(
-                    image_base64=image_base64,
+                    image_type=image_type,
+                    image=image_bytes,
                     revised_prompt=revised_prompt,
                     raw=result,
                 )
             elif image_url:
                 # URL format (used by some models like Seedream-4)
                 return ImageResponse(
-                    image_url=image_url,
+                    image_type="url",
+                    image=image_url,
                     revised_prompt=revised_prompt,
                     raw=result,
                 )

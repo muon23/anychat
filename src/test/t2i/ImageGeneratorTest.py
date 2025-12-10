@@ -23,7 +23,7 @@ import t2i
 from t2i.DallEImageGenerator import DallEImageGenerator
 from t2i.DeepInfraImageGenerator import DeepInfraImageGenerator
 from t2i.ReplicateImageGenerator import ReplicateImageGenerator
-from t2i.ImageGenerator import ImageResponse
+from t2i.ImageResponse import ImageResponse
 
 
 class ImageGeneratorTest(unittest.TestCase):
@@ -258,27 +258,27 @@ class ImageGeneratorTest(unittest.TestCase):
     def test_image_response_structure(self):
         """Test ImageResponse dataclass structure."""
         response = ImageResponse(
-            image_url="https://example.com/image.png",
-            image_base64=None,
+            image_type="url",
+            image="https://example.com/image.png",
             revised_prompt="A revised prompt",
             raw={"test": "data"}
         )
-        self.assertEqual(response.image_url, "https://example.com/image.png")
-        self.assertIsNone(response.image_base64)
+        self.assertEqual(response.image_type, "url")
+        self.assertEqual(response.image, "https://example.com/image.png")
         self.assertEqual(response.revised_prompt, "A revised prompt")
         self.assertEqual(response.raw, {"test": "data"})
 
-    def test_image_response_with_base64(self):
-        """Test ImageResponse with base64 data."""
-        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    def test_image_response_with_binary(self):
+        """Test ImageResponse with binary data."""
+        jpeg_data = b'\xff\xd8\xff\xe0\x00\x10JFIF' + b'\x00' * 100
         response = ImageResponse(
-            image_url=None,
-            image_base64=base64_data,
+            image_type="jpeg",
+            image=jpeg_data,
             revised_prompt=None,
             raw=None
         )
-        self.assertIsNone(response.image_url)
-        self.assertEqual(response.image_base64, base64_data)
+        self.assertEqual(response.image_type, "jpeg")
+        self.assertEqual(response.image, jpeg_data)
         self.assertIsNone(response.revised_prompt)
 
     @patch('openai.OpenAI')
@@ -299,7 +299,8 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertEqual(response.image_url, "https://example.com/image.png")
+        self.assertEqual(response.image_type, "url")
+        self.assertEqual(response.image, "https://example.com/image.png")
         self.assertEqual(response.revised_prompt, "A revised prompt")
         mock_client.images.generate.assert_called_once()
 
@@ -321,8 +322,8 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertIsNotNone(response.image_base64)
-        self.assertIsNone(response.image_url)
+        self.assertIn(response.image_type, ["jpeg", "png", "unknown"])  # Detected type
+        self.assertIsInstance(response.image, bytes)
         mock_httpx_post.assert_called_once()
 
     @patch('httpx.post')
@@ -343,8 +344,8 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertEqual(response.image_url, "https://example.com/image.png")
-        self.assertIsNone(response.image_base64)
+        self.assertEqual(response.image_type, "url")
+        self.assertEqual(response.image, "https://example.com/image.png")
         self.assertEqual(response.revised_prompt, "A revised prompt")
 
     @patch('httpx.post')
@@ -391,7 +392,8 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertEqual(response.image_url, "https://example.com/image.png")
+        self.assertEqual(response.image_type, "url")
+        self.assertEqual(response.image, "https://example.com/image.png")
         self.assertIsNone(response.revised_prompt)
         mock_replicate_run.assert_called_once()
 
@@ -406,12 +408,28 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertIsNotNone(response.image_base64)
-        self.assertIsNone(response.image_url)
-        # Verify it's valid base64
+        self.assertEqual(response.image_type, "jpeg")
+        self.assertIsInstance(response.image, bytes)
+        self.assertEqual(response.image[:len(jpeg_header)], jpeg_header)
+
+    @patch('replicate.run')
+    def test_replicate_generate_success_with_base64_string(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() with base64-encoded string response."""
         import base64
-        decoded = base64.b64decode(response.image_base64)
-        self.assertEqual(decoded[:len(jpeg_header)], jpeg_header)
+        # Create a base64-encoded JPEG (starts with /9j/ when base64 encoded)
+        jpeg_data = b'\xff\xd8\xff\xe0\x00\x10JFIF' + b'\x00' * 100
+        base64_str = base64.b64encode(jpeg_data).decode('utf-8')
+        
+        # Mock Replicate response - base64 string
+        mock_replicate_run.return_value = base64_str
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        response = generator.generate("A test prompt")
+        
+        self.assertIsInstance(response, ImageResponse)
+        self.assertEqual(response.image_type, "jpeg")
+        self.assertIsInstance(response.image, bytes)
+        self.assertEqual(response.image, jpeg_data)
 
     @patch('replicate.run')
     def test_replicate_generate_success_with_list_url(self, mock_replicate_run):
@@ -423,7 +441,8 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertEqual(response.image_url, "https://example.com/image1.png")
+        self.assertEqual(response.image_type, "url")
+        self.assertEqual(response.image, "https://example.com/image1.png")
         self.assertIsNone(response.revised_prompt)
 
     @patch('replicate.run')
@@ -437,8 +456,9 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertIsNotNone(response.image_base64)
-        self.assertIsNone(response.image_url)
+        self.assertEqual(response.image_type, "jpeg")
+        self.assertIsInstance(response.image, bytes)
+        self.assertEqual(len(response.image), len(jpeg_data))
 
     @patch('replicate.run')
     def test_replicate_generate_success_with_generator(self, mock_replicate_run):
@@ -452,7 +472,8 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertEqual(response.image_url, "https://example.com/image.png")
+        self.assertEqual(response.image_type, "url")
+        self.assertEqual(response.image, "https://example.com/image.png")
 
     @patch('replicate.run')
     def test_replicate_generate_success_with_generator_binary(self, mock_replicate_run):
@@ -467,8 +488,9 @@ class ImageGeneratorTest(unittest.TestCase):
         response = generator.generate("A test prompt")
         
         self.assertIsInstance(response, ImageResponse)
-        self.assertIsNotNone(response.image_base64)
-        self.assertIsNone(response.image_url)
+        self.assertEqual(response.image_type, "jpeg")
+        self.assertIsInstance(response.image, bytes)
+        self.assertEqual(len(response.image), len(jpeg_data))
 
     @patch('replicate.run')
     def test_replicate_generate_no_data(self, mock_replicate_run):
