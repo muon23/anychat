@@ -35,6 +35,7 @@ class Llm(ABC):
         """Standardized structure for LLM responses across all provider subclasses."""
         text: str = None
         image_url: str = None
+        image_base64: str = None
         tool_calls: list[dict] = field(default_factory=list)
         citations: list[dict] = field(default_factory=list)
         thought: str = None

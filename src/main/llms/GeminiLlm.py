@@ -99,7 +99,7 @@ class GeminiLlm(Llm):
             response: The raw output from the ChatGoogleGenerativeAI runnable.
 
         Returns:
-
+            A dictionary containing the cleaned response content and metadata.
 
         Raises:
             TypeError: If the response object is not the expected AIMessage.
