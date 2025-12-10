@@ -25,6 +25,7 @@ ddgs>=9.6.1
 
 # Image Generation
 replicate>=1.0.7
+Pillow>=10.0.0  # PIL (Python Imaging Library) for image processing
 
 # Data Validation
 pydantic>=2.12.0
