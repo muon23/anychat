@@ -22,6 +22,7 @@ sys.path.insert(0, str(src_main))
 import t2i
 from t2i.DallEImageGenerator import DallEImageGenerator
 from t2i.DeepInfraImageGenerator import DeepInfraImageGenerator
+from t2i.ReplicateImageGenerator import ReplicateImageGenerator
 from t2i.ImageGenerator import ImageResponse
 
 
@@ -70,6 +71,20 @@ class ImageGeneratorTest(unittest.TestCase):
             self.assertIsInstance(generator, DeepInfraImageGenerator)
             self.assertEqual(generator.get_model_name(), "ByteDance/Seedream-4")
 
+    def test_factory_function_with_z_image_turbo(self):
+        """Test factory function creates ReplicateImageGenerator for z-image-turbo."""
+        with patch.dict(os.environ, {"REPLICATE_API_TOKEN": "test-key"}):
+            generator = t2i.of("z-image-turbo")
+            self.assertIsInstance(generator, ReplicateImageGenerator)
+            self.assertEqual(generator.get_model_name(), "prunaai/z-image-turbo")
+
+    def test_factory_function_with_z_image_alias(self):
+        """Test factory function creates ReplicateImageGenerator for z-image alias."""
+        with patch.dict(os.environ, {"REPLICATE_API_TOKEN": "test-key"}):
+            generator = t2i.of("z-image")
+            self.assertIsInstance(generator, ReplicateImageGenerator)
+            self.assertEqual(generator.get_model_name(), "prunaai/z-image-turbo")
+
     def test_factory_function_with_sd35(self):
         """Test factory function creates DeepInfraImageGenerator for sd-3.5."""
         with patch.dict(os.environ, {"DEEPINFRA_API_KEY": "test-key"}):
@@ -102,6 +117,13 @@ class ImageGeneratorTest(unittest.TestCase):
         self.assertIn("seedream-4", models)
         self.assertIn("stability-ai/stable-diffusion-3.5-large", models)
         self.assertIn("sd-3.5", models)
+
+    def test_replicate_get_supported_models(self):
+        """Test ReplicateImageGenerator.get_supported_models returns all models and aliases."""
+        models = ReplicateImageGenerator.get_supported_models()
+        self.assertIn("prunaai/z-image-turbo", models)
+        self.assertIn("z-image", models)
+        self.assertIn("z-image-turbo", models)
 
     def test_dalle_init_with_canonical_name(self):
         """Test DallEImageGenerator initialization with canonical model name."""
@@ -161,6 +183,34 @@ class ImageGeneratorTest(unittest.TestCase):
         """Test DeepInfraImageGenerator accepts API key as parameter."""
         generator = DeepInfraImageGenerator("flux-2", model_key="test-key-456")
         self.assertEqual(generator.model_key, "test-key-456")
+
+    def test_replicate_init_with_canonical_name(self):
+        """Test ReplicateImageGenerator initialization with canonical model name."""
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        self.assertEqual(generator.get_model_name(), "prunaai/z-image-turbo")
+
+    def test_replicate_init_with_alias(self):
+        """Test ReplicateImageGenerator initialization with alias."""
+        generator = ReplicateImageGenerator("z-image", model_key="test-key")
+        self.assertEqual(generator.get_model_name(), "prunaai/z-image-turbo")
+
+    def test_replicate_init_invalid_model(self):
+        """Test ReplicateImageGenerator raises ValueError for invalid model."""
+        with self.assertRaises(ValueError) as context:
+            ReplicateImageGenerator("invalid-model", model_key="test-key")
+        self.assertIn("not supported", str(context.exception))
+
+    def test_replicate_init_missing_api_key(self):
+        """Test ReplicateImageGenerator raises RuntimeError when API key is missing."""
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(RuntimeError) as context:
+                ReplicateImageGenerator("prunaai/z-image-turbo")
+            self.assertIn("API token", str(context.exception))
+
+    def test_replicate_init_with_api_key_parameter(self):
+        """Test ReplicateImageGenerator accepts API key as parameter."""
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key-789")
+        self.assertEqual(generator.model_key, "test-key-789")
 
     def test_dalle_default_size(self):
         """Test DallEImageGenerator uses default size from model config."""
@@ -330,6 +380,117 @@ class ImageGeneratorTest(unittest.TestCase):
         generator = DeepInfraImageGenerator("flux-2", model_key="test-key")
         with self.assertRaises(httpx.HTTPStatusError):
             generator.generate("A test prompt")
+
+    @patch('replicate.run')
+    def test_replicate_generate_success_with_string_url(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() with string URL response."""
+        # Mock Replicate response - single URL string
+        mock_replicate_run.return_value = "https://example.com/image.png"
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        response = generator.generate("A test prompt")
+        
+        self.assertIsInstance(response, ImageResponse)
+        self.assertEqual(response.image_url, "https://example.com/image.png")
+        self.assertIsNone(response.revised_prompt)
+        mock_replicate_run.assert_called_once()
+
+    @patch('replicate.run')
+    def test_replicate_generate_success_with_binary_data(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() with binary image data response."""
+        # Mock Replicate response - binary JPEG data
+        jpeg_header = b'\xff\xd8\xff\xe0\x00\x10JFIF'
+        mock_replicate_run.return_value = jpeg_header + b'\x00' * 100  # Simulate JPEG data
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        response = generator.generate("A test prompt")
+        
+        self.assertIsInstance(response, ImageResponse)
+        self.assertIsNotNone(response.image_base64)
+        self.assertIsNone(response.image_url)
+        # Verify it's valid base64
+        import base64
+        decoded = base64.b64decode(response.image_base64)
+        self.assertEqual(decoded[:len(jpeg_header)], jpeg_header)
+
+    @patch('replicate.run')
+    def test_replicate_generate_success_with_list_url(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() with list of URLs response."""
+        # Mock Replicate response - list of URLs
+        mock_replicate_run.return_value = ["https://example.com/image1.png", "https://example.com/image2.png"]
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        response = generator.generate("A test prompt")
+        
+        self.assertIsInstance(response, ImageResponse)
+        self.assertEqual(response.image_url, "https://example.com/image1.png")
+        self.assertIsNone(response.revised_prompt)
+
+    @patch('replicate.run')
+    def test_replicate_generate_success_with_list_binary(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() with list of binary data."""
+        # Mock Replicate response - list with binary data
+        jpeg_data = b'\xff\xd8\xff\xe0\x00\x10JFIF' + b'\x00' * 100
+        mock_replicate_run.return_value = [jpeg_data]
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        response = generator.generate("A test prompt")
+        
+        self.assertIsInstance(response, ImageResponse)
+        self.assertIsNotNone(response.image_base64)
+        self.assertIsNone(response.image_url)
+
+    @patch('replicate.run')
+    def test_replicate_generate_success_with_generator(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() with generator response."""
+        # Mock Replicate response - generator that yields URLs
+        def url_generator():
+            yield "https://example.com/image.png"
+        mock_replicate_run.return_value = url_generator()
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        response = generator.generate("A test prompt")
+        
+        self.assertIsInstance(response, ImageResponse)
+        self.assertEqual(response.image_url, "https://example.com/image.png")
+
+    @patch('replicate.run')
+    def test_replicate_generate_success_with_generator_binary(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() with generator yielding binary data."""
+        # Mock Replicate response - generator that yields binary data
+        jpeg_data = b'\xff\xd8\xff\xe0\x00\x10JFIF' + b'\x00' * 100
+        def binary_generator():
+            yield jpeg_data
+        mock_replicate_run.return_value = binary_generator()
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        response = generator.generate("A test prompt")
+        
+        self.assertIsInstance(response, ImageResponse)
+        self.assertIsNotNone(response.image_base64)
+        self.assertIsNone(response.image_url)
+
+    @patch('replicate.run')
+    def test_replicate_generate_no_data(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() raises ValueError when no data in response."""
+        # Mock Replicate response with no data
+        mock_replicate_run.return_value = []
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        with self.assertRaises(ValueError) as context:
+            generator.generate("A test prompt")
+        self.assertIn("No image data", str(context.exception))
+
+    @patch('replicate.run')
+    def test_replicate_generate_with_exception(self, mock_replicate_run):
+        """Test ReplicateImageGenerator.generate() handles exceptions."""
+        # Mock Replicate to raise an exception
+        mock_replicate_run.side_effect = Exception("API error")
+        
+        generator = ReplicateImageGenerator("prunaai/z-image-turbo", model_key="test-key")
+        with self.assertRaises(Exception) as context:
+            generator.generate("A test prompt")
+        self.assertIn("API error", str(context.exception))
 
 
 if __name__ == '__main__':

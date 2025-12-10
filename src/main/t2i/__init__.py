@@ -7,6 +7,7 @@ based on the requested model name.
 """
 from t2i.DallEImageGenerator import DallEImageGenerator
 from t2i.DeepInfraImageGenerator import DeepInfraImageGenerator
+from t2i.ReplicateImageGenerator import ReplicateImageGenerator
 from t2i.ImageGenerator import ImageGenerator
 
 
@@ -28,7 +29,7 @@ def of(model_name: str, **kwargs) -> ImageGenerator:
     Raises:
         RuntimeError: If the provided model_name is not supported by any known subclass.
     """
-    generators = [DallEImageGenerator, DeepInfraImageGenerator]
+    generators = [DallEImageGenerator, DeepInfraImageGenerator, ReplicateImageGenerator]
 
     for generator in generators:
         # Check if the model_name is in the list of supported models for this class
