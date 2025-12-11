@@ -2,6 +2,12 @@ import logging
 import sys
 from pathlib import Path
 
+# Add src/main to Python path so local modules can be imported
+# This ensures the script works when run from command line (not just from IntelliJ)
+_script_dir = Path(__file__).parent.parent  # Go up from ui/ to main/
+if str(_script_dir) not in sys.path:
+    sys.path.insert(0, str(_script_dir))
+
 from PySide6.QtCore import QFile, QPoint, Qt, QTimer, QObject, QEvent, QMimeData, QThread, Signal
 from PySide6.QtGui import (
     QResizeEvent, QKeyEvent, QWheelEvent, QFontMetrics, QShortcut, QKeySequence, QDragEnterEvent,
