@@ -23,6 +23,7 @@ class GptLlm(Llm):
 
     # Model metadata, including token limits and aliases
     __MODELS = {
+        "gpt-5.2": {"token_limit": 400_000},
         "gpt-5.1": {"token_limit": 400_000},
         "gpt-5": {"token_limit": 400_000},
         "gpt-4.1": {},
@@ -38,7 +39,7 @@ class GptLlm(Llm):
     SUPPORTED_MODELS = list(__MODELS.keys())
 
     # Models that support web search via LangChain tools binding
-    WEB_SEARCH_SUPPORTED = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-5"]
+    WEB_SEARCH_SUPPORTED = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-5", "gpt-5.1", "gpt-5.2"]
 
     # Mapping from aliases (e.g., 'gpt-3.5') to canonical names ('gpt-3.5-turbo')
     MODEL_ALIASES = Llm._alias2model(__MODELS)

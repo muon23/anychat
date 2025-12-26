@@ -758,6 +758,11 @@ class MainWindow(QMainWindow):
             # Disable messageInput when no chat is selected
             if self.messageInput:
                 self.messageInput.setEnabled(False)
+            # Clear selection in chatsList
+            if self.chatsList:
+                self.chatsList.blockSignals(True)
+                self.chatsList.clearSelection()
+                self.chatsList.blockSignals(False)
             return
 
         item_path_str = current.data(0, PathRole)
@@ -776,8 +781,19 @@ class MainWindow(QMainWindow):
             # Disable messageInput when a directory is selected
             if self.messageInput:
                 self.messageInput.setEnabled(False)
+            # Clear selection in chatsList
+            if self.chatsList:
+                self.chatsList.blockSignals(True)
+                self.chatsList.clearSelection()
+                self.chatsList.blockSignals(False)
 
         elif item_path.is_file() and item_path.suffix == '.json':
+            # Clear selection in chatsList when selecting a chat in projectsTree
+            if self.chatsList:
+                self.chatsList.blockSignals(True)
+                self.chatsList.clearSelection()
+                self.chatsList.blockSignals(False)
+            
             # Save messageInput content to the previous chat before loading a new one
             if self.current_chat_file_path and self.current_chat_file_path != item_path:
                 self._save_current_chat()
@@ -800,6 +816,11 @@ class MainWindow(QMainWindow):
             # Disable messageInput when no chat is selected
             if self.messageInput:
                 self.messageInput.setEnabled(False)
+            # Clear selection in projectsTree
+            if self.projectsTree:
+                self.projectsTree.blockSignals(True)
+                self.projectsTree.clearSelection()
+                self.projectsTree.blockSignals(False)
             return
 
         item_path_str = current.data(PathRole)
@@ -809,6 +830,12 @@ class MainWindow(QMainWindow):
         item_path = Path(item_path_str)
 
         if item_path.is_file() and item_path.suffix == '.json':
+            # Clear selection in projectsTree when selecting a chat in chatsList
+            if self.projectsTree:
+                self.projectsTree.blockSignals(True)
+                self.projectsTree.clearSelection()
+                self.projectsTree.blockSignals(False)
+            
             # Save messageInput content to the previous chat before loading a new one
             if self.current_chat_file_path and self.current_chat_file_path != item_path:
                 self._save_current_chat()
