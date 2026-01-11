@@ -1,11 +1,12 @@
 from PySide6.QtCore import Qt, QSize, Signal, QEvent, QTimer, QPoint
-from PySide6.QtGui import QFontMetrics, QMouseEvent, QCursor
+from PySide6.QtGui import QFontMetrics, QMouseEvent, QCursor, QTextBlockFormat, QTextCursor
 from PySide6.QtWidgets import (
     QWidget, QListWidgetItem, QTextEdit, QPushButton,
     QHBoxLayout, QApplication, QGraphicsOpacityEffect, QMenu, QBoxLayout
 )
 
 import markdown
+import markdown.extensions.nl2br
 
 from spell_check_text_edit import SpellCheckTextEdit
 
@@ -776,8 +777,11 @@ class ChatMessageWidget(QWidget):
         
         if self._display_mode == "rendered":
             # Rendered mode: Convert Markdown to HTML and display
-            html_content = markdown.markdown(self._raw_content, extensions=['fenced_code', 'tables'])
-            # Add basic styling for dark theme
+            # Use extensions for better markdown support
+            extensions = ['fenced_code', 'tables', 'nl2br']
+
+            html_content = markdown.markdown(self._raw_content, extensions=extensions)
+            # Add basic styling for dark theme with proper list indentation
             styled_html = f"""
             <style>
                 body {{ color: #FFFFFF; background-color: transparent; }}
@@ -788,12 +792,30 @@ class ChatMessageWidget(QWidget):
                 th, td {{ border: 1px solid #666; padding: 6px; }}
                 th {{ background-color: rgba(0, 0, 0, 0.2); }}
                 a {{ color: #4A9EFF; }}
+                ul, ol {{ margin: 4px 0; padding-left: 24px; }}
+                ul ul, ol ol, ul ol, ol ul {{ margin: 2px 0; padding-left: 24px; }}
+                ul ul ul, ol ol ol, ul ul ol, ol ol ul, ul ol ul, ol ul ol {{ margin: 2px 0; padding-left: 24px; }}
+                li {{ margin: 2px 0; }}
+                p {{ margin: 0 0 0.75em 0; }}
+                p:last-child {{ margin-bottom: 0; }}
+                strong, b {{ font-weight: bold; }}
+                em, i {{ font-style: italic; }}
+                h1, h2, h3, h4, h5, h6 {{ margin: 0.5em 0 0.25em 0; }}
+                h1:first-child, h2:first-child, h3:first-child, h4:first-child, h5:first-child, h6:first-child {{ margin-top: 0; }}
             </style>
             {html_content}
             """
-            self.ui.messageContent.setHtml(styled_html)
-            self.ui.messageContent.setReadOnly(True)
-            self.ui.messageContent.setAcceptRichText(True)
+            # Block signals temporarily to prevent spell checker from interfering
+            was_blocked = self.ui.messageContent.signalsBlocked()
+            if not was_blocked:
+                self.ui.messageContent.blockSignals(True)
+            try:
+                self.ui.messageContent.setHtml(styled_html)
+                self.ui.messageContent.setReadOnly(True)
+                self.ui.messageContent.setAcceptRichText(True)
+            finally:
+                if not was_blocked:
+                    self.ui.messageContent.blockSignals(False)
             # Note: Spell check is disabled in rendered mode since it's read-only
             
             # Update button icon and tooltip
@@ -801,9 +823,61 @@ class ChatMessageWidget(QWidget):
             self.mode_toggle_button.setToolTip("Switch to raw text mode")
         else:
             # Raw mode: Display plain text, enable editing and spell check
-            self.ui.messageContent.setPlainText(self._raw_content)
-            self.ui.messageContent.setReadOnly(False)
-            self.ui.messageContent.setAcceptRichText(False)
+            # Block signals temporarily to prevent interference
+            was_blocked = self.ui.messageContent.signalsBlocked()
+            if not was_blocked:
+                self.ui.messageContent.blockSignals(True)
+            try:
+                # Clear first to remove any HTML formatting that might affect spacing
+                self.ui.messageContent.clear()
+                # Set plain text (this should reset formatting)
+                self.ui.messageContent.setPlainText(self._raw_content)
+                self.ui.messageContent.setReadOnly(False)
+                self.ui.messageContent.setAcceptRichText(False)
+                
+                # Reset text block format to ensure normal line spacing
+                # This prevents double spacing that can occur when switching from HTML mode
+                doc = self.ui.messageContent.document()
+                if doc:
+                    # Reset default block format to ensure single line spacing
+                    default_format = QTextBlockFormat()
+                    # Set line height to 100% (normal single spacing) using proportional height
+                    try:
+                        # Use getattr to access LineHeightType enum to avoid IDE warnings
+                        # ProportionalHeight with 100 means 100% of font height (single spacing)
+                        line_height_type = getattr(QTextBlockFormat, 'LineHeightType', None)
+                        if line_height_type:
+                            default_format.setLineHeight(100, line_height_type.ProportionalHeight)
+                        else:
+                            # Fallback: use integer constant if enum doesn't exist
+                            default_format.setLineHeight(100, 0)  # 0 = ProportionalHeight
+                    except (AttributeError, TypeError):
+                        # Fallback: try FixedHeight with 0 (use default)
+                        try:
+                            line_height_type = getattr(QTextBlockFormat, 'LineHeightType', None)
+                            if line_height_type:
+                                default_format.setLineHeight(0, line_height_type.FixedHeight)
+                            else:
+                                # Fallback: use integer constant if enum doesn't exist
+                                default_format.setLineHeight(0, 1)  # 1 = FixedHeight
+                        except (AttributeError, TypeError):
+                            # If line height setting doesn't work, use default format as-is
+                            pass
+                    
+                    # Apply the format to all blocks in the document
+                    cursor = QTextCursor(doc)
+                    block = doc.firstBlock()
+                    while block.isValid():
+                        cursor.setPosition(block.position())
+                        cursor.setBlockFormat(default_format)
+                        block = block.next()
+                    
+                    # Move cursor to start
+                    cursor.movePosition(QTextCursor.MoveOperation.Start)
+                    self.ui.messageContent.setTextCursor(cursor)
+            finally:
+                if not was_blocked:
+                    self.ui.messageContent.blockSignals(False)
             # Spell check is already enabled for SpellCheckTextEdit
             
             # Connect to textChanged to update raw_content when user edits

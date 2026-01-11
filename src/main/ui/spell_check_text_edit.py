@@ -36,7 +36,8 @@ class SpellCheckTextEdit(QTextEdit):
             underline_style = QTextCharFormat.UnderlineStyle.SingleUnderline
         
         self.misspelled_format.setUnderlineStyle(underline_style)
-        self.misspelled_format.setUnderlineColor(QColor(255, 0, 0))  # Red underline
+        # Use white color for maximum visibility on dark backgrounds
+        self.misspelled_format.setUnderlineColor(QColor(255, 255, 255))  # White underline
         
         if SPELLCHECKER_AVAILABLE:
             try:
@@ -102,6 +103,10 @@ class SpellCheckTextEdit(QTextEdit):
         if not self.spell_checker:
             return
         
+        # Skip spell checking if widget is read-only (rendered mode)
+        if self.isReadOnly():
+            return
+        
         # Get current cursor position and text
         cursor = self.textCursor()
         current_pos = cursor.position()
@@ -131,6 +136,10 @@ class SpellCheckTextEdit(QTextEdit):
     def _perform_spell_check(self):
         """Perform spell check on the document."""
         if not self.spell_checker:
+            return
+        
+        # Skip spell checking if widget is read-only (rendered mode)
+        if self.isReadOnly():
             return
         
         # Get the document
@@ -185,8 +194,8 @@ class SpellCheckTextEdit(QTextEdit):
     def setPlainText(self, text: str):
         """Override to trigger spell check after setting text."""
         super().setPlainText(text)
-        if self.spell_checker:
-            # Trigger spell check immediately when text is set
+        if self.spell_checker and not self.isReadOnly():
+            # Trigger spell check immediately when text is set (only if not read-only)
             QTimer.singleShot(100, self._perform_spell_check)
 
     @classmethod
@@ -194,7 +203,9 @@ class SpellCheckTextEdit(QTextEdit):
         """Extract words with their positions in the text."""
         import re
         words = []
-        for match in re.finditer(r'\b[a-zA-Z]+\b', text):
+        # Match words including contractions (apostrophes within words)
+        # Pattern: word boundary, letters, optional apostrophe + letters, word boundary
+        for match in re.finditer(r"\b[a-zA-Z]+(?:'[a-zA-Z]+)?\b", text):
             word = match.group()
             start_pos = match.start()
             end_pos = match.end()
@@ -217,14 +228,44 @@ class SpellCheckTextEdit(QTextEdit):
         if not word_lower.replace("'", "").isalpha():
             return True
         
+        # Skip capitalized words that are longer than 3 characters (likely proper nouns)
+        # This is a heuristic: proper nouns like names, places, etc. are often capitalized
+        # Short capitalized words might be sentence starts, so we still check those
+        if word and word[0].isupper() and len(word) > 3:
+            # Skip checking - assume it's a proper noun
+            # This prevents false positives for names like "Julian", "Japanese", etc.
+            return True
+        
         # Check if word is in session-ignored list
         if word_lower in self.session_ignored_words:
             return True
         
         # Check spelling with enchant
         try:
-            # enchant.Dict.check() returns True if word is correctly spelled
-            return self.spell_checker.check(word_lower)
+            # First try checking the word as-is (handles contractions like "shouldn't")
+            if self.spell_checker.check(word_lower):
+                return True
+            
+            # If the word contains an apostrophe and the check failed,
+            # try checking the base word (e.g., "shouldn't" -> check "shouldn")
+            if "'" in word_lower:
+                # Split on apostrophe and check the first part
+                base_word = word_lower.split("'")[0]
+                if base_word and len(base_word) > 2:
+                    # Check if the base word is valid (e.g., "shouldn" might not be, but "can" is)
+                    # For contractions, the base word is often valid
+                    if self.spell_checker.check(base_word):
+                        return True
+                    # Also check common contraction endings
+                    # "n't", "'t", "'s", "'d", "'ll", "'ve", "'re", "'m"
+                    contraction_endings = ["n't", "'t", "'s", "'d", "'ll", "'ve", "'re", "'m"]
+                    for ending in contraction_endings:
+                        if word_lower.endswith(ending):
+                            # It's a contraction, assume it's valid
+                            return True
+            
+            # Word not found in dictionary
+            return False
         except Exception:
             # If checking fails, assume it's correct to avoid false positives
             return True

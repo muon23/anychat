@@ -1242,6 +1242,12 @@ class MainWindow(QMainWindow):
                     # Update the path in the item
                     new_path = old_path.with_stem(new_name) if old_path.is_file() else old_path.with_name(new_name)
                     item.setData(PathRole, str(new_path))
+                    
+                    # IMPORTANT: Update current_chat_file_path if this is the currently open chat
+                    # This prevents saving to the old (renamed) path and creating a duplicate file
+                    if self.current_chat_file_path == old_path:
+                        self.current_chat_file_path = new_path
+                    
                     # Always set the icon after updating text to ensure it's visible
                     item.setIcon(file_icon)
                     # Ensure item flags are correct (enabled and selectable, but not editable by default)
@@ -1335,6 +1341,12 @@ class MainWindow(QMainWindow):
                 # Update the path in the item
                 new_path = old_path.with_stem(new_name) if old_path.is_file() else old_path.with_name(new_name)
                 item.setData(0, PathRole, str(new_path))
+                
+                # IMPORTANT: Update current_chat_file_path if this is the currently open chat
+                # This prevents saving to the old (renamed) path and creating a duplicate file
+                if self.current_chat_file_path == old_path:
+                    self.current_chat_file_path = new_path
+                
                 self._load_chat_history()
             else:
                 # Rename failed - restore old name
