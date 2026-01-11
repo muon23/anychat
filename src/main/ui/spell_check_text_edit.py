@@ -377,7 +377,7 @@ class SpellCheckTextEdit(QTextEdit):
                 logger.warning(f"Could not add word to dictionary: {e}")
     
     def keyPressEvent(self, event: QKeyEvent):
-        """Override to implement Emacs key bindings."""
+        """Override to implement Emacs key bindings and ensure standard shortcuts work."""
         modifiers = event.modifiers()
         key = event.key()
         
@@ -387,9 +387,39 @@ class SpellCheckTextEdit(QTextEdit):
         if sys.platform == 'darwin':  # macOS
             ctrl_modifier = Qt.KeyboardModifier.MetaModifier
             alt_modifier = Qt.KeyboardModifier.AltModifier
+            cmd_modifier = Qt.KeyboardModifier.ControlModifier  # Command key on macOS
         else:  # Linux/Windows
             ctrl_modifier = Qt.KeyboardModifier.ControlModifier
             alt_modifier = Qt.KeyboardModifier.AltModifier
+            cmd_modifier = Qt.KeyboardModifier.ControlModifier  # Ctrl key on Linux/Windows
+        
+        # Handle standard cut/copy/paste shortcuts (Command-X/C/V on macOS, Ctrl-X/C/V on Linux/Windows)
+        if modifiers == cmd_modifier:
+            if key == Qt.Key.Key_X:  # Cut (or copy if read-only)
+                cursor = self.textCursor()
+                if cursor.hasSelection():
+                    if self.isReadOnly():
+                        # In read-only mode, cut should copy to clipboard
+                        self.copy()
+                    else:
+                        # In editable mode, cut normally
+                        self.cut()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_C:  # Copy
+                if self.textCursor().hasSelection():
+                    self.copy()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_V:  # Paste
+                if not self.isReadOnly():
+                    self.paste()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_A:  # Select All
+                self.selectAll()
+                event.accept()
+                return
         
         # Check for Ctrl key combinations
         if modifiers == ctrl_modifier:
