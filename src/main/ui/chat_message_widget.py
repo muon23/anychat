@@ -58,6 +58,7 @@ class ChatMessageWidget(QWidget):
         self._resize_start_size = QSize()
         self._custom_width = None  # Custom width set by user (None = auto)
         self._custom_height = None  # Custom height set by user (None = auto)
+        self._resize_moved = False  # Track drag vs click on resize button
         
         # Display mode for assistant messages: "rendered" (default) or "raw"
         self._display_mode = "rendered"  # "rendered" or "raw"
@@ -342,6 +343,7 @@ class ChatMessageWidget(QWidget):
             return
         
         self._is_resizing = True
+        self._resize_moved = False
         # Get current mouse position
         from PySide6.QtGui import QCursor
         self._resize_start_pos = QCursor.pos()
@@ -371,6 +373,9 @@ class ChatMessageWidget(QWidget):
             self.releaseMouse()
             # Reset cursor
             self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+            # If no drag occurred, optimize bubble size
+            if not self._resize_moved:
+                self._optimize_bubble_size()
     
     def enterEvent(self, event):
         """Show buttons when mouse enters the widget."""
@@ -517,6 +522,9 @@ class ChatMessageWidget(QWidget):
             self.releaseMouse()
             # Reset cursor
             self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+            # If no drag occurred, optimize bubble size
+            if not self._resize_moved:
+                self._optimize_bubble_size()
         super().mouseReleaseEvent(event)
     
     def mousePressEvent(self, event: QMouseEvent):
@@ -997,6 +1005,12 @@ class ChatMessageWidget(QWidget):
         # Calculate delta from start position
         delta = global_pos - self._resize_start_pos
         
+        # Treat small movement as click (no resize)
+        if not self._resize_moved:
+            if delta.manhattanLength() < 3:
+                return
+            self._resize_moved = True
+        
         # Get viewport width for max width calculation
         viewport_width = list_widget.viewport().width()
         layout_margins = self.ui.mainLayout.contentsMargins()
@@ -1031,3 +1045,9 @@ class ChatMessageWidget(QWidget):
         
         # Force immediate update
         QApplication.processEvents()
+
+    def _optimize_bubble_size(self):
+        """Reset custom sizing so bubble auto-sizes to content."""
+        self._custom_width = None
+        self._custom_height = None
+        self.update_size()
